@@ -1,6 +1,24 @@
 package com.example.photogallery;
 
+import android.net.Uri;
+import android.util.Log;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+
 public class FlickrFetchr{
+    private static final String TAG="FlickrFetchr";
+    private static final String API_KEY="0363ad859a7ae1001843f4baa4a865ce";
+
     public byte[] getUrlBytes(String urlSpec) throws IOException{ // erzeugt einen rohes URL-Objekt (als Byte-Array) aus dem uebergebenen String
         URL url=new URL(urlSpec);
         HttpURLConnection connection = (HttpURLConnection)url.openConnection(); // erzeugt ein Connection-Objekt, das auf die URL zeigt. Dabei wird das URLConnection-Objekt zu einem spezifischen HttpURLConnection-Objekt gecastet (hat eigene interfaces, methoden etc.)
@@ -8,7 +26,7 @@ public class FlickrFetchr{
         try{
             ByteArrayOutputStream out = new ByteArrayOutputStream(); // wird mit InputStream der URL gefuettert
             InputStream in=connection.getInputStream(); // Verbindung wird mit Aufruf von getInputStream() schliesslich aufgebaut. in frisst die Daten aus dieser Verbindung.
-            if(connection.getResponseCode()!=HttpURLConnection.HTTP_OK){
+            if(connection.getResponseCode()!= HttpURLConnection.HTTP_OK){
                 throw new IOException(connection.getResponseMessage() + "with: " + urlSpec);
             }
             
@@ -20,11 +38,56 @@ public class FlickrFetchr{
             out.close();
             return out.toByteArray();
         }
-        finally { connection.disconnect()}
+        finally { connection.disconnect();}
     }
     
-    public String getUrlString(String urlSpec) throws IOException{ // extrahiert die URL als String
+    public String getUrlString(String urlSpec) throws IOException { // extrahiert String aus dem ByteArray der URL
         return new String(getUrlBytes(urlSpec));
     }
 
+    public List<GalleryItem> fetchItems(){ // baut die entsprechende Request-URL zusammen und laedt die dazugehoerigen daten runter
+        List<GalleryItem> items=new ArrayList<>();
+
+        try{
+            String url= Uri.parse("https://api.flickr.com/services/rest").buildUpon()
+                    .appendQueryParameter("method", "flickr.photos.getRecent")
+                    .appendQueryParameter("api_key", API_KEY)
+                    .appendQueryParameter("format", "json")
+                    .appendQueryParameter("nojsoncallback", "1")
+                    .appendQueryParameter("extras", "url_s") // sagt Flickr, dass wir auch dir url fuer die kleine version des bildes haben wollen (wenn sie existiert)
+                    .build().toString();
+            String jsonString = getUrlString(url);
+            Log.i(TAG, "Received JSON: " + jsonString);
+            JSONObject jsonBody = new JSONObject(jsonString); // json-konstruktor uebersetzt die json-hierarchie, die im string abgespeichert ist, in ein entsprechendes java-objekt mit der selben hierarchie
+            // hiert ist jsonBody das top-level-Objekt, das das JSONArray photo traegt, welches wiederum eine Familie von JSON-Objekten beinhaltet. jedes davon stellt die metadaten eines einzelnen fotos dar
+            parseItems(items,jsonBody);
+        } catch(IOException ioe){
+            Log.e(TAG, "Failed to fetch items", ioe);
+        } catch(JSONException je){
+            Log.e(TAG, "Failed to parse JSON", je);
+        }
+
+        return items;
+    }
+
+    private void parseItems(List<GalleryItem> items, JSONObject jsonBody) throws IOException, JSONException{ // durchsucht das photos-array des json-objekts photo aus dem ober-json-objekt und steckt jedes foto
+        // in ein GalleryItem-Objekt
+        JSONObject photosJsonObject=jsonBody.getJSONObject("photos");
+        JSONArray photoJsonArray=photosJsonObject.getJSONArray("photo");
+
+        for(int i=0;i<photoJsonArray.length();i++){
+            JSONObject photoJsonObject= photoJsonArray.getJSONObject(i);
+
+            GalleryItem item= new GalleryItem();
+            item.setId(photoJsonObject.getString("id"));
+            item.setCaption(photoJsonObject.getString("title"));
+
+            if(!photoJsonObject.has("url_s")){ // ignoriere bilder, die keine url aufweisen
+                continue;
+            }
+
+            item.setUrl(photoJsonObject.getString("url_s"));
+            items.add(item);
+        }
+    }
 }
