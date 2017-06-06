@@ -72,7 +72,7 @@ public class FlickrFetchr{
 //         return mItems;
 //     }
     
-    public List<GalleryItem> fetchItemsFromPage(int page){
+    public List<GalleryItem> fetchItemsFromPage(Integer page){
         try{
             String url= Uri.parse("https://api.flickr.com/services/rest").buildUpon()
                     .appendQueryParameter("method", "flickr.photos.getRecent")
@@ -101,7 +101,7 @@ public class FlickrFetchr{
         JSONObject photosJsonObject=jsonBody.getJSONObject("photos");
         JSONArray photoJsonArray=photosJsonObject.getJSONArray("photo");
 
-        for(int i=items.size();i<photoJsonArray.length()+items.size();i++){
+        for(int i=0;i<photoJsonArray.length();i++){
             JSONObject photoJsonObject= photoJsonArray.getJSONObject(i);
 
             GalleryItem item= new GalleryItem();
