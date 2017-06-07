@@ -87,6 +87,9 @@ public class FlickrFetchr{
             JSONObject jsonBody = new JSONObject(jsonString); // json-konstruktor uebersetzt die json-hierarchie, die im string abgespeichert ist, in ein entsprechendes java-objekt mit der selben hierarchie
             // hiert ist jsonBody das top-level-Objekt, das das JSONArray photo traegt, welches wiederum eine Familie von JSON-Objekten beinhaltet. jedes davon stellt die metadaten eines einzelnen fotos dar
             parseItems(mItems,jsonBody);
+            
+            Gson gson=new GsonBuilder.create();
+            mItems=gson.fromJson(jsonString,List<GalleryItem>)
         } catch(IOException ioe){
             Log.e(TAG, "Failed to fetch items", ioe);
         } catch(JSONException je){
