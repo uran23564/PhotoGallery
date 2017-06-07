@@ -18,9 +18,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static android.support.v7.widget.RecyclerView.SCROLL_STATE_DRAGGING;
-import static android.support.v7.widget.RecyclerView.SCROLL_STATE_SETTLING;
-
 /**
  * Created by merz_konstantin on 5/28/17.
  */
@@ -29,11 +26,11 @@ public class PhotoGalleryFragment extends Fragment {
     private static final String TAG="PhotoGalleryFragment";
 
     private RecyclerView mPhotoRecyclerView;
+    private GridLayoutManager mGridLayoutManager;
     private List<GalleryItem> mItems=new ArrayList<>();
     // private RecyclerView.OnScrollListener mScrollListener;
-    private int pages=1; // wir starten mit der ersten seite
-    private boolean mIsScrollingUp; // falls wahr, so wird nichts neu geladen
-    // private FetchItemsTask mTask = new FetchItemsTask();
+    private int pages=1; // wir starten mit einer seite
+    private int currentPage=1; // gerade angesehene Seite
 
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
@@ -44,7 +41,6 @@ public class PhotoGalleryFragment extends Fragment {
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
         new FetchItemsTask().execute(pages); // startet den async-task
-        // mTask.execute(pages);
     }
 
     @Override
@@ -52,17 +48,30 @@ public class PhotoGalleryFragment extends Fragment {
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
-
-        mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+        mGridLayoutManager=mPhotoRecyclerView.getLayoutManager();
+        // mPhotoRecyclerView.addOnScrollListener(mScrollListener);
+        mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener{
             @Override
-            public void onScrolled(RecyclerView recyclerView, int dx, int dy){
-                super.onScrolled(recyclerView,dx,dy);
+            public void onScrollStateChanged(RecyclerView recyclerView, int newState){
+//                 if(newState==SCROLL_STATE_SETTLING){
+//                     pages++;
+//                     FetchItemsTask().execute(pages);
+//                 }
+            }
+            
+            @Override void onScrolled(RecyclerView recyclerView, int dx, int dy){
+                if(dy>0 && mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){ // scrollt und wir sind beim letzten sichtbaren item
+                    pages++;
+                    currentPage++;
+                    new FetchItemsTask.execute(currentPage);
+                }
+                else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mItems.size()-99)){ // stellt sicher, dass wir auf der richtigen seite sind
+                    currentPage--;
+                }
             }
         });
-
         
         setupAdapter();
-
         
         return v;
     }
@@ -113,24 +122,18 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
 
-    private class FetchItemsTask extends AsyncTask<Integer,Void,List<GalleryItem>> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
+    private class FetchItemsTask extends AsyncTask<int,Void,List<GalleryItem>> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
         // erster parameter gibt typ der parameter an, die beim aufruf von AsyncTask.execute() uebergeben werden
         // dritter parameter oben gibt den typ des resultats von doInBackground an. dies ist automatisch auch der typ, der als argument in onPostExecute verwendet werden muss
         @Override
-        protected List<GalleryItem> doInBackground(Integer... params){ // das zeug laeuft im hintergrund ab
-            return new FlickrFetchr().fetchItemsFromPage(params[0]);
+        protected List<GalleryItem> doInBackground(Int... params){ // das zeug laeuft im hintergrund ab
+            return new FlickrFetchr().fetchItemsFromPage(params);
         }
 
         @Override
         protected void onPostExecute(List<GalleryItem> items){
-            if(mItems.size()==0){
-                mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
-                setupAdapter();
-            }
-            else{
-                mItems.addAll(items);
-                mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
-            }
+            mItems=items; // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
+            setupAdapter();
         }
     }
 }
