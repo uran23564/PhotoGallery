@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -26,7 +27,7 @@ public class PhotoGalleryFragment extends Fragment {
     private static final String TAG="PhotoGalleryFragment";
 
     private RecyclerView mPhotoRecyclerView;
-    private GridLayoutManager mGridLayoutManager;
+    private android.support.v7.widget.GridLayoutManager mGridLayoutManager;
     private List<GalleryItem> mItems=new ArrayList<>();
     // private RecyclerView.OnScrollListener mScrollListener;
     private int pages=1; // wir starten mit einer seite
@@ -48,9 +49,8 @@ public class PhotoGalleryFragment extends Fragment {
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
-        mGridLayoutManager=mPhotoRecyclerView.getLayoutManager();
-        // mPhotoRecyclerView.addOnScrollListener(mScrollListener);
-        mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener{
+        mGridLayoutManager=(GridLayoutManager)mPhotoRecyclerView.getLayoutManager();
+        mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener(){
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState){
 //                 if(newState==SCROLL_STATE_SETTLING){
@@ -59,11 +59,12 @@ public class PhotoGalleryFragment extends Fragment {
 //                 }
             }
             
-            @Override void onScrolled(RecyclerView recyclerView, int dx, int dy){
+            @Override
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy){
                 if(dy>0 && mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){ // scrollt und wir sind beim letzten sichtbaren item
                     pages++;
                     currentPage++;
-                    new FetchItemsTask.execute(currentPage);
+                    new FetchItemsTask().execute(currentPage);
                 }
                 else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mItems.size()-99)){ // stellt sicher, dass wir auf der richtigen seite sind
                     currentPage--;
@@ -122,12 +123,12 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
 
-    private class FetchItemsTask extends AsyncTask<int,Void,List<GalleryItem>> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
+    private class FetchItemsTask extends AsyncTask<Integer,Void,List<GalleryItem>> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
         // erster parameter gibt typ der parameter an, die beim aufruf von AsyncTask.execute() uebergeben werden
         // dritter parameter oben gibt den typ des resultats von doInBackground an. dies ist automatisch auch der typ, der als argument in onPostExecute verwendet werden muss
         @Override
-        protected List<GalleryItem> doInBackground(Int... params){ // das zeug laeuft im hintergrund ab
-            return new FlickrFetchr().fetchItemsFromPage(params);
+        protected List<GalleryItem> doInBackground(Integer... params){ // das zeug laeuft im hintergrund ab
+            return new FlickrFetchr().fetchItemsFromPage(params[0]);
         }
 
         @Override

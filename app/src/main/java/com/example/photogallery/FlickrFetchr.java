@@ -3,6 +3,9 @@ package com.example.photogallery;
 import android.net.Uri;
 import android.util.Log;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -72,7 +75,7 @@ public class FlickrFetchr{
 //         return mItems;
 //     }
     
-    public List<GalleryItem> fetchItemsFromPage(int page){
+    public List<GalleryItem> fetchItemsFromPage(Integer page){
         try{
             String url= Uri.parse("https://api.flickr.com/services/rest").buildUpon()
                     .appendQueryParameter("method", "flickr.photos.getRecent")
@@ -88,8 +91,8 @@ public class FlickrFetchr{
             // hiert ist jsonBody das top-level-Objekt, das das JSONArray photo traegt, welches wiederum eine Familie von JSON-Objekten beinhaltet. jedes davon stellt die metadaten eines einzelnen fotos dar
             parseItems(mItems,jsonBody);
             
-            Gson gson=new GsonBuilder.create();
-            mItems=gson.fromJson(jsonString,List<GalleryItem>)
+            // Gson gson=new GsonBuilder.create();
+            // mItems=gson.fromJson(jsonString,List<GalleryItem>)
         } catch(IOException ioe){
             Log.e(TAG, "Failed to fetch items", ioe);
         } catch(JSONException je){
@@ -104,7 +107,7 @@ public class FlickrFetchr{
         JSONObject photosJsonObject=jsonBody.getJSONObject("photos");
         JSONArray photoJsonArray=photosJsonObject.getJSONArray("photo");
 
-        for(int i=items.size();i<photoJsonArray.length()+items.size();i++){
+        for(int i=0;i<photoJsonArray.length();i++){
             JSONObject photoJsonObject= photoJsonArray.getJSONObject(i);
 
             GalleryItem item= new GalleryItem();
