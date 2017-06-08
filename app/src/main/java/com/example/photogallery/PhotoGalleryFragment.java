@@ -51,7 +51,7 @@ public class PhotoGalleryFragment extends Fragment {
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
         mCurrentPageTextView=(TextView) v.findViewById(R.id.current_page_text_view);
-        mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
+        mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
         
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
         mGridLayoutManager=(GridLayoutManager)mPhotoRecyclerView.getLayoutManager();
@@ -69,12 +69,12 @@ public class PhotoGalleryFragment extends Fragment {
                 if(dy>0 && mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){ // scrollt und wir sind beim letzten sichtbaren item
                     pages++;
                     currentPage++;
-                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
+                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
                     new FetchItemsTask().execute(currentPage);
                 }
                 else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mItems.size()-99)){ // stellt sicher, dass wir auf der richtigen seite sind
                     currentPage--;
-                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
+                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
                 }
             }
         });
