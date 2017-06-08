@@ -28,6 +28,8 @@ public class PhotoGalleryFragment extends Fragment {
 
     private RecyclerView mPhotoRecyclerView;
     private android.support.v7.widget.GridLayoutManager mGridLayoutManager;
+    private TextView mCurrentPageTextView;
+    
     private List<GalleryItem> mItems=new ArrayList<>();
     // private RecyclerView.OnScrollListener mScrollListener;
     private int pages=1; // wir starten mit einer seite
@@ -48,6 +50,9 @@ public class PhotoGalleryFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
+        mCurrentPageTextView=(TextView) v.findViewById(R.id.current_page_text_view);
+        mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
+        
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
         mGridLayoutManager=(GridLayoutManager)mPhotoRecyclerView.getLayoutManager();
         mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener(){
@@ -64,10 +69,12 @@ public class PhotoGalleryFragment extends Fragment {
                 if(dy>0 && mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){ // scrollt und wir sind beim letzten sichtbaren item
                     pages++;
                     currentPage++;
+                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
                     new FetchItemsTask().execute(currentPage);
                 }
                 else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mItems.size()-99)){ // stellt sicher, dass wir auf der richtigen seite sind
                     currentPage--;
+                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage));
                 }
             }
         });
@@ -133,8 +140,14 @@ public class PhotoGalleryFragment extends Fragment {
 
         @Override
         protected void onPostExecute(List<GalleryItem> items){
-            mItems=items; // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
-            setupAdapter();
+            // mItems=items; // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
+            mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
+            if(mItems.size()==0){
+                setupAdapter();
+            }
+            else{
+                mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
+            }
         }
     }
 }
