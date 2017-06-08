@@ -2,8 +2,12 @@ package com.example.photogallery;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.GridLayoutManager;
@@ -13,6 +17,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -32,8 +37,9 @@ public class PhotoGalleryFragment extends Fragment {
     
     private List<GalleryItem> mItems=new ArrayList<>();
     // private RecyclerView.OnScrollListener mScrollListener;
-    private int pages=1; // wir starten mit einer seite
-    private int currentPage=1; // gerade angesehene Seite
+    private int mPages=1; // wir starten mit einer seite
+    private int mCurrentPage=1; // gerade angesehene Seite
+    private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
 
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
@@ -43,7 +49,21 @@ public class PhotoGalleryFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        new FetchItemsTask().execute(pages); // startet den async-task
+        new FetchItemsTask().execute(mPages); // startet den async-task
+
+        Handler responseHandler=new Handler(); // handler gehoert dem mainthread
+
+        mThumbnailDownloader=new ThumbnailDownloader<>(responseHandler);
+        mThumbnailDownloader.setThumbnailDownloadListener(new ThumbnailDownloader.ThumbnailDownloadListener<PhotoHolder>() {
+            @Override
+            public void onThumbnailDownloaded(PhotoHolder photoHolder, Bitmap bitmap) {
+                Drawable drawable=new BitmapDrawable(getResources(), bitmap);
+                photoHolder.bindDrawable(drawable);
+            }
+        });
+        mThumbnailDownloader.start();
+        mThumbnailDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
+        Log.i(TAG, "Background thread started");
     }
 
     @Override
@@ -51,7 +71,7 @@ public class PhotoGalleryFragment extends Fragment {
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
         mCurrentPageTextView=(TextView) v.findViewById(R.id.current_page_text_view);
-        mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
+        updatePageNumber();
         
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
         mGridLayoutManager=(GridLayoutManager)mPhotoRecyclerView.getLayoutManager();
@@ -66,16 +86,23 @@ public class PhotoGalleryFragment extends Fragment {
             
             @Override
             public void onScrolled(RecyclerView recyclerView, int dx, int dy){
-                if(dy>0 && mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){ // scrollt und wir sind beim letzten sichtbaren item
-                    pages++;
-                    currentPage++;
-                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
-                    new FetchItemsTask().execute(currentPage);
+                if(dy>0){
+                    if(mGridLayoutManager.findLastVisibleItemPosition()>=(mItems.size()-1)){
+                        if(mItems.size()<=mPages*100 && (mPages-1)*100<=mItems.size()+(mPages%3)) { // erst dann zeug laden, wenn die vorigen fotos alle heruntergeladen wurden (sinnvoll??)
+                        mPages++;
+                        mCurrentPage++;
+                            new FetchItemsTask().execute(mCurrentPage);
+                        }
+                    }
+                    else if(mGridLayoutManager.findLastVisibleItemPosition()>=(mCurrentPage)*100){
+                        mCurrentPage++;
+                    }
                 }
-                else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mItems.size()-99)){ // stellt sicher, dass wir auf der richtigen seite sind
-                    currentPage--;
-                    mCurrentPageTextView.setText("Current Page: " + String.valueOf(currentPage) + "/" + String.valueOf(pages));
+
+                else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mCurrentPage-1)*100 && mGridLayoutManager.findFirstVisibleItemPosition()!=0){ // stellt sicher, dass wir auf der richtigen seite sind
+                    mCurrentPage--;
                 }
+                updatePageNumber();
             }
         });
         
@@ -90,6 +117,23 @@ public class PhotoGalleryFragment extends Fragment {
         }
     }
 
+    private void updatePageNumber(){
+        mCurrentPageTextView.setText("Current Page: " + String.valueOf(mCurrentPage) + "/" + String.valueOf(mPages)+ " -- Number of loaded pictures: " + (mItems.size()));
+    }
+
+    @Override
+    public void onDestroyView(){
+        super.onDestroyView();
+        mThumbnailDownloader.clearQueue();
+    }
+
+    @Override
+    public void onDestroy(){
+        super.onDestroy();
+        mThumbnailDownloader.quit(); // thread muss separat zerstoert werden -- andernfalls wird er zum zombie, sprich er hat keinen mutterprozess
+        Log.i(TAG,"Background thread destroyed");
+    }
+
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
         private List<GalleryItem> mGalleryItems;
 
@@ -99,14 +143,20 @@ public class PhotoGalleryFragment extends Fragment {
 
         @Override
         public PhotoHolder onCreateViewHolder(ViewGroup viewGroup, int viewType){
-            TextView textView=new TextView((getActivity()));
-            return new PhotoHolder(textView);
+            // TextView textView=new TextView((getActivity()));
+            // return new PhotoHolder(textView);
+            LayoutInflater inflater=LayoutInflater.from(getActivity());
+            View view=inflater.inflate(R.layout.list_item_gallery,viewGroup,false);
+            return new PhotoHolder(view);
         }
 
         @Override
         public void onBindViewHolder(PhotoHolder photoHolder, int position){
             GalleryItem galleryItem=mGalleryItems.get(position);
-            photoHolder.bindGalleryItem(galleryItem);
+            // photoHolder.bindGalleryItem(galleryItem);
+            Drawable placeholder=getResources().getDrawable(R.drawable.myimage);
+            photoHolder.bindDrawable(placeholder);
+            mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
         }
 
         @Override
@@ -117,15 +167,21 @@ public class PhotoGalleryFragment extends Fragment {
 
 
     private class PhotoHolder extends RecyclerView.ViewHolder{
-        private TextView mTitleTextView;
+        // private TextView mTitleTextView;
+        private ImageView mItemImageView;
 
         public PhotoHolder(View itemView){
             super(itemView);
-            mTitleTextView=(TextView) itemView;
+            // mTitleTextView=(TextView) itemView;
+            mItemImageView=(ImageView) itemView.findViewById(R.id.item_image_view);
         }
 
-        public void bindGalleryItem(GalleryItem item){
-            mTitleTextView.setText(item.toString()); // stellt nur die caption dar
+        /*public void bindGalleryItem(GalleryItem item){
+            // mTitleTextView.setText(item.toString()); // stellt nur die caption dar
+        }*/
+
+        public void bindDrawable(Drawable drawable){
+            mItemImageView.setImageDrawable(drawable);
         }
     }
 
