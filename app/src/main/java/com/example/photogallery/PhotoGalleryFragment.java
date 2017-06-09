@@ -30,6 +30,7 @@ import java.util.List;
 
 public class PhotoGalleryFragment extends Fragment {
     private static final String TAG="PhotoGalleryFragment";
+    private static final int CACHE_SIZE=4*1024*2014; // groesse des caches=4MB
 
     private RecyclerView mPhotoRecyclerView;
     private android.support.v7.widget.GridLayoutManager mGridLayoutManager;
@@ -40,7 +41,12 @@ public class PhotoGalleryFragment extends Fragment {
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
-
+    private LruCache<PhotoHolder,Bitmap> mBitmapCache=new LruCache<PhotoHolder,Bitmap>(CACHE_SIZE){
+        protected int sizeOf(PhotoHolder key, Bitmap value){
+            return value.getByteCount();
+        }
+    }
+    
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
     }
@@ -59,6 +65,7 @@ public class PhotoGalleryFragment extends Fragment {
             public void onThumbnailDownloaded(PhotoHolder photoHolder, Bitmap bitmap) {
                 Drawable drawable=new BitmapDrawable(getResources(), bitmap);
                 photoHolder.bindDrawable(drawable);
+                mBitmapCache.put(photoHolder,drawable); // aktuelle fotos sollen schon mal gecached werden
             }
         });
         mThumbnailDownloader.start();
@@ -73,15 +80,14 @@ public class PhotoGalleryFragment extends Fragment {
         mCurrentPageTextView=(TextView) v.findViewById(R.id.current_page_text_view);
         updatePageNumber();
         
+        int itemHeight=mPhotoRecyclerView.getAdapter().getItemHeight();
+        
         mPhotoRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(),3));
         mGridLayoutManager=(GridLayoutManager)mPhotoRecyclerView.getLayoutManager();
         mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener(){
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState){
-//                 if(newState==SCROLL_STATE_SETTLING){
-//                     pages++;
-//                     FetchItemsTask().execute(pages);
-//                 }
+                // passt so
             }
             
             @Override
@@ -98,6 +104,9 @@ public class PhotoGalleryFragment extends Fragment {
                         mCurrentPage++;
                     }
                 }
+                if(dy>itemHeight){ // naechsten 3 fotos schon mal in den cache laden
+                    cacheNextPhotos(3,mGridLayoutManager.findLastVisibleItemPosition());
+                }
 
                 else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mCurrentPage-1)*100 && mGridLayoutManager.findFirstVisibleItemPosition()!=0){ // stellt sicher, dass wir auf der richtigen seite sind
                     mCurrentPage--;
@@ -113,9 +122,17 @@ public class PhotoGalleryFragment extends Fragment {
 
     private void setupAdapter(){
         if(isAdded()){ // checkt, ob fragment schon an die activity angehaengt wurde, da fragments theoretisch auch ohne activities leben koennen. dies kann der fall sein, da AsyncTask im Vordergrund sein kann
-            mPhotoRecyclerView.setAdapter(new PhotoAdapter(mItems));
+            mPhotoRecyclerView.setAdapter(new PhotoAdapter(mItems,mBitmapCache));
+            // ausserdem sollen die naechsten 9 photos schon mal in den cache runtergeladen werden
+            cacheNextPhotos(9,9);
         }
     }
+    
+    private void cacheNextPhotos(int numberOfPhotos, int position){
+            GalleryItem galleryItem=mGalleryItems.get(position);
+            mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+            mBitmapCache.put(photoHolder,);
+        }
 
     private void updatePageNumber(){
         mCurrentPageTextView.setText("Current Page: " + String.valueOf(mCurrentPage) + "/" + String.valueOf(mPages)+ " -- Number of loaded pictures: " + (mItems.size()));
@@ -132,13 +149,23 @@ public class PhotoGalleryFragment extends Fragment {
         super.onDestroy();
         mThumbnailDownloader.quit(); // thread muss separat zerstoert werden -- andernfalls wird er zum zombie, sprich er hat keinen mutterprozess
         Log.i(TAG,"Background thread destroyed");
+        mBitmapCache.evictAll(); // cache leeren
     }
 
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
         private List<GalleryItem> mGalleryItems;
+        // private LruCache<PhotoHolder,Bitmap> mBitmapCache;
+//         private LruCache<PhotoHolder,Bitmap> mBitmapCache=new LruCache<PhotoHolder,Bitmap>(CACHE_SIZE){
+//             protected int sizeOf(PhotoHolder key, Bitmap value){
+//                 return value.getByteCount();
+//             }
+//         }
 
-        public PhotoAdapter(List<GalleryItem> galleryItems){
+        public PhotoAdapter(List<GalleryItem> galleryItems, LruCache<PhotoHolder,Bitmap> bitmapCache){
             mGalleryItems=galleryItems;
+            mBitmapCache=bitmapCache;
+//             // ausserdem sollen die naechsten 9 photos schon mal in den cache runtergeladen werden
+//             cacheNextPhotos(9,9);
         }
 
         @Override
@@ -155,14 +182,32 @@ public class PhotoGalleryFragment extends Fragment {
             GalleryItem galleryItem=mGalleryItems.get(position);
             // photoHolder.bindGalleryItem(galleryItem);
             Drawable placeholder=getResources().getDrawable(R.drawable.myimage);
-            photoHolder.bindDrawable(placeholder);
-            mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+            // schauen, ob das bild schon im cache ist
+            if(mBitmapCache.get(photoHolder)!=null){
+                photoHolder.bindDrawable(mBitmapCache.get(photoHolder));
+            } else{
+                photoHolder.bindDrawable(placeholder);
+                mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+            }
         }
 
         @Override
         public int getItemCount(){
             return mGalleryItems.size();
         }
+        
+        public int getItemHeight(){
+            return PhotoHolder.getItemHeight();
+        }
+        
+//         public void cacheNextPhotos(int numberOfPhotos, int position){
+//             GalleryItem galleryItem=mGalleryItems.get(position);
+//             mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+//             mBitmapCache.put(photoHolder,);
+//         }
+        
+        // public LruCache<PhotoHolder,Bitmap> getLruCache(){ return mBitmapCache;}
+        
     }
 
 
@@ -183,6 +228,10 @@ public class PhotoGalleryFragment extends Fragment {
         public void bindDrawable(Drawable drawable){
             mItemImageView.setImageDrawable(drawable);
         }
+        
+        public int getItemHeight(){
+            return mItemImageView.getHeight();
+        }
     }
 
 
@@ -196,7 +245,6 @@ public class PhotoGalleryFragment extends Fragment {
 
         @Override
         protected void onPostExecute(List<GalleryItem> items){
-            // mItems=items; // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
             mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
             if(mItems.size()==0){
                 setupAdapter();
