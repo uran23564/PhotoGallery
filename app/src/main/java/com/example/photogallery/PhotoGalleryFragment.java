@@ -25,28 +25,25 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import static android.support.v7.widget.RecyclerView.SCROLL_STATE_IDLE;
+
 /**
  * Created by merz_konstantin on 5/28/17.
  */
 
 public class PhotoGalleryFragment extends Fragment {
     private static final String TAG="PhotoGalleryFragment";
-    private static final int CACHE_SIZE=16*1024*2014; // groesse des caches=16MB
 
     private RecyclerView mPhotoRecyclerView;
     private android.support.v7.widget.GridLayoutManager mGridLayoutManager;
     private TextView mCurrentPageTextView;
     
     private List<GalleryItem> mItems=new ArrayList<>();
-    // private RecyclerView.OnScrollListener mScrollListener;
+
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
-    private LruCache<GalleryItem,Bitmap> mBitmapCache=new LruCache<GalleryItem,Bitmap>(CACHE_SIZE){
-        protected int sizeOf(GalleryItem key, Bitmap value){
-            return value.getByteCount();
-        }
-    };
+
     
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
@@ -58,21 +55,20 @@ public class PhotoGalleryFragment extends Fragment {
         setRetainInstance(true);
         new FetchItemsTask().execute(mPages); // startet den async-task
 
-        Handler responseHandler=new Handler(); // handler gehoert dem mainthread
+        Handler thumbnailResponseHandler=new Handler(); // handler gehoert dem mainthread
 
-        mThumbnailDownloader=new ThumbnailDownloader<>(responseHandler);
+        mThumbnailDownloader=new ThumbnailDownloader<>(thumbnailResponseHandler);
         mThumbnailDownloader.setThumbnailDownloadListener(new ThumbnailDownloader.ThumbnailDownloadListener<PhotoHolder>() {
             @Override
             public void onThumbnailDownloaded(PhotoHolder photoHolder, Bitmap bitmap) {
                 Drawable drawable=new BitmapDrawable(getResources(), bitmap);
-                GalleryItem galleryItem=photoHolder.getGalleryItem();
                 photoHolder.bindDrawable(drawable);
-                mBitmapCache.put(galleryItem,bitmap); // aktuelle fotos sollen schon mal gecached werden
             }
         });
         mThumbnailDownloader.start();
         mThumbnailDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
         Log.i(TAG, "Background thread started");
+
     }
 
     @Override
@@ -89,7 +85,10 @@ public class PhotoGalleryFragment extends Fragment {
         mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener(){
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState){
-                // passt so
+                int first=mGridLayoutManager.findFirstVisibleItemPosition();
+                if(newState==SCROLL_STATE_IDLE&&mGridLayoutManager.findFirstVisibleItemPosition()==0){
+                    cacheNextPhotos(9,15);
+                }
             }
             
             @Override
@@ -106,10 +105,11 @@ public class PhotoGalleryFragment extends Fragment {
                         mCurrentPage++;
                     }
                 }
-                if(dy>100){ // naechsten 3 fotos schon mal in den cache laden
+
+                if(dy>5){ // naechsten fotos schon mal in den cache laden
                     int pos=mGridLayoutManager.findLastVisibleItemPosition();
                     // cacheNextPhotos(9,mGridLayoutManager.findLastVisibleItemPosition());
-                    cacheNextPhotos(9,pos);
+                    cacheNextPhotos(18, pos);
                 }
 
                 else if(dy<0 && mGridLayoutManager.findFirstVisibleItemPosition()<=(mCurrentPage-1)*100 && mGridLayoutManager.findFirstVisibleItemPosition()!=0){ // stellt sicher, dass wir auf der richtigen seite sind
@@ -120,25 +120,23 @@ public class PhotoGalleryFragment extends Fragment {
         });
         
         setupAdapter();
-        
+
         return v;
     }
 
     private void setupAdapter(){
-        if(isAdded()){ // checkt, ob fragment schon an die activity angehaengt wurde, da fragments theoretisch auch ohne activities leben koennen. dies kann der fall sein, da AsyncTask im Vordergrund sein kann
-            mPhotoRecyclerView.setAdapter(new PhotoAdapter(mItems,mBitmapCache));
-            // ausserdem sollen die naechsten 9 photos schon mal in den cache runtergeladen werden
-            if(mGridLayoutManager.findFirstVisibleItemPosition()>=0) {
-                cacheNextPhotos(9, 15);
-            }
+        if(isAdded()){ // checkt, ob fragment schon an die activity angehaengt wurde, da fragments theoretisch auch ohne activities leben koennen. dies kann der fall sein, da AsyncTask im Vordergrund sein kann;
+            mPhotoRecyclerView.setAdapter(new PhotoAdapter(mItems));
         }
     }
     
     private void cacheNextPhotos(int numberOfPhotos, int position){
-        for(int i=1;i<=numberOfPhotos;i++) {
-            // TODO: schau, ob findViewHolderForAdapterPosition wohldefiniert
-            mThumbnailDownloader.queueThumbnail((PhotoHolder) mPhotoRecyclerView.findViewHolderForAdapterPosition(position+i),
-                    mItems.get(position+i).getUrl());
+        int startIndex=Math.max(position-numberOfPhotos,0);
+        int endIndex=Math.min(position+numberOfPhotos,mItems.size()-1);
+        for(int i=startIndex;i<=endIndex;i++) {
+            if (i==position){ continue;}
+            String url=mItems.get(i).getUrl();
+            mThumbnailDownloader.preloadImage(url);
         }
     }
 
@@ -157,15 +155,13 @@ public class PhotoGalleryFragment extends Fragment {
         super.onDestroy();
         mThumbnailDownloader.quit(); // thread muss separat zerstoert werden -- andernfalls wird er zum zombie, sprich er hat keinen mutterprozess
         Log.i(TAG,"Background thread destroyed");
-        mBitmapCache.evictAll(); // cache leeren
     }
 
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
         private List<GalleryItem> mGalleryItems;
 
-        public PhotoAdapter(List<GalleryItem> galleryItems, LruCache<GalleryItem,Bitmap> bitmapCache){
+        public PhotoAdapter(List<GalleryItem> galleryItems){
             mGalleryItems=galleryItems;
-            mBitmapCache=bitmapCache;
         }
 
         @Override
@@ -180,15 +176,16 @@ public class PhotoGalleryFragment extends Fragment {
         @Override
         public void onBindViewHolder(PhotoHolder photoHolder, int position){
             GalleryItem galleryItem=mGalleryItems.get(position);
-            photoHolder.setGalleryItem(galleryItem);
-            // photoHolder.bindGalleryItem(galleryItem);
             Drawable placeholder=getResources().getDrawable(R.drawable.myimage);
-            // schauen, ob das bild schon im cache ist
-            if(mBitmapCache.get(galleryItem)!=null){
-                photoHolder.bindDrawable(new BitmapDrawable(getResources(),mBitmapCache.get(galleryItem)));
-            } else{
+            Bitmap bitmap=mThumbnailDownloader.getCachedImage(galleryItem.getUrl());
+
+            // Wenn bild noch nicht im cache, dann runterladen
+            if(bitmap==null){
                 photoHolder.bindDrawable(placeholder);
                 mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+            } else{
+                Log.i(TAG,"Image loaded from cache");
+                photoHolder.bindDrawable(new BitmapDrawable(getResources(),bitmap));
             }
         }
 
@@ -217,10 +214,6 @@ public class PhotoGalleryFragment extends Fragment {
         public void bindDrawable(Drawable drawable){
             mItemImageView.setImageDrawable(drawable);
         }
-
-        public GalleryItem getGalleryItem(){ return mGalleryItem;}
-
-        public void setGalleryItem(GalleryItem galleryItem){ mGalleryItem=galleryItem;}
     }
 
 

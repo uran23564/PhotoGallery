@@ -6,6 +6,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
 import android.util.Log;
+import android.util.LruCache;
 
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,12 +19,15 @@ import java.util.concurrent.ConcurrentMap;
 public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzelnes generisches argument -- wird ein PhotoHolder sein
     private static final String TAG="ThumbnailDownloader";
     private static final int MESSAGE_DOWNLOAD=0; // das 'what'-feld der nachricht (zum sortieren fuer den handler, was gemacht werden muss (naemlich was runterladen)
+    private static final int MESSAGE_PRELOAD=1;
+    private static final int CACHE_SIZE=16*1024*2014; // groesse des caches=16MB
 
     private boolean mHasQuit=false;
     private Handler mRequestHandler; // Handler fuer die kommunikation innerhalb des threads
     private ConcurrentMap<T,String> mRequestMap=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
     private Handler mResponseHandler; // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
     private ThumbnailDownloadListener<T> mThumbnailDownloadListener;
+    private LruCache<String,Bitmap> mLruCache;
 
     public interface ThumbnailDownloadListener<T>{
         void onThumbnailDownloaded(T target, Bitmap thumbnail); // wird aufgerufen, wenn ein bild vollstaendig runtergeladen wurde
@@ -36,6 +40,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     public ThumbnailDownloader(Handler responseHandler){
         super(TAG);
         mResponseHandler=responseHandler;
+        mLruCache=new LruCache<String, Bitmap>(CACHE_SIZE);
     }
 
     @Override
@@ -43,10 +48,17 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
         mRequestHandler=new Handler(){
             @Override
             public void handleMessage(Message msg){
-                if(msg.what==MESSAGE_DOWNLOAD){
-                    T target=(T) msg.obj; // extrahieren des "anhangs" der nachricht (das target, der PhotoHolder)
-                    Log.i(TAG, "Got a request for URL: " + mRequestMap.get(target));
-                    handleRequest(target);
+                switch (msg.what){
+                    case MESSAGE_DOWNLOAD:
+                        T target=(T) msg.obj; // extrahieren des "anhangs" der nachricht (das target, der PhotoHolder)
+                        Log.i(TAG, "Got a request for URL: " + mRequestMap.get(target));
+                        handleRequest(target);
+                        break;
+
+                    case MESSAGE_PRELOAD:
+                        String url=(String) msg.obj;
+                        downloadImage(url);
+                        break;
                 }
             }
         };
@@ -55,6 +67,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     @Override
     public boolean quit(){
         mHasQuit=true;
+        clearCache();
         return super.quit();
     }
 
@@ -72,9 +85,21 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
         }
     }
 
+    public void preloadImage(String url){
+        mRequestHandler.obtainMessage(MESSAGE_PRELOAD,url).sendToTarget();
+    }
+
+    public Bitmap getCachedImage(String url){
+        return mLruCache.get(url);
+    }
+
     public void clearQueue(){ // falls geraet rotiert wird, raeumen wir auf, da ThumbnailDownloader evtl mit falschen PhotoHolders verknuepft sein koennte
         mRequestHandler.removeMessages(MESSAGE_DOWNLOAD);
         mRequestMap.clear();
+    }
+
+    private void clearCache(){
+        mLruCache.evictAll();
     }
 
     private void handleRequest(final T target){ // methode, die der handler ausfuehrt, wenn er eine nachricht erhaelt
@@ -86,6 +111,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
 
             byte[] bitmapBytes=new FlickrFetchr().getUrlBytes(url);
             final Bitmap bitmap= BitmapFactory.decodeByteArray(bitmapBytes,0,bitmapBytes.length);
+            mLruCache.put(url,bitmap);
             Log.i(TAG,"Bitmap created");
 
             mResponseHandler.post(new Runnable() { // es wird eine nachricht an den handler des mainthreads geschickt, der den folgenden code (im mainthread!) ohne weiteres ausfuehrt
@@ -100,6 +126,26 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
             });
         } catch (IOException ioe){
             Log.e(TAG,"Error downloading image", ioe);
+        }
+    }
+
+    private Bitmap downloadImage(String url){
+        if(url==null){ return null;}
+        Bitmap bitmap=mLruCache.get(url);
+        // wenn bitmap im cache ist, einfach zurueckgeben
+        if(bitmap!=null){
+            return bitmap;
+        }
+
+        try{
+            byte[] bitmapBytes=new FlickrFetchr().getUrlBytes(url);
+            bitmap=BitmapFactory.decodeByteArray(bitmapBytes,0,bitmapBytes.length);
+            mLruCache.put(url,bitmap);
+            Log.i(TAG,"Downloaded and cached image: " + url);
+            return bitmap;
+        } catch (IOException ioe){
+            Log.e(TAG,"Error downloading image", ioe);
+            return null;
         }
     }
 }
