@@ -130,8 +130,9 @@ public class PhotoGalleryFragment extends Fragment {
         }
     }
     
-    private void cacheNextPhotos(int numberOfPhotos, int position){
-        int startIndex=Math.max(position-numberOfPhotos,0);
+    private void cacheNextPhotos(int numberOfPhotos, int position){ // laedt naechste numberOfPhotos in den Cache
+        // int startIndex=Math.max(position-numberOfPhotos,0);
+        int startIndex=Math.max(position,0);
         int endIndex=Math.min(position+numberOfPhotos,mItems.size()-1);
         for(int i=startIndex;i<=endIndex;i++) {
             if (i==position){ continue;}
