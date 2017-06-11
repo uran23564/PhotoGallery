@@ -40,7 +40,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     public ThumbnailDownloader(Handler responseHandler){
         super(TAG);
         mResponseHandler=responseHandler;
-        mLruCache=new LruCache<String, Bitmap>(CACHE_SIZE);
+        mLruCache=new LruCache<>(CACHE_SIZE);
     }
 
     @Override
@@ -65,12 +65,13 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     }
 
     @Override
-    public boolean quit(){
+    public boolean quit(){ // methode wird vom hauptthread aufgerufen, wenn er zerstoert wird. damit wird auch dieser thread zerstoert
         mHasQuit=true;
         clearCache();
         return super.quit();
     }
 
+    // wird vom hauptthread aufgerufen, verbindet die url mit dem photoholder und schickt eine nachricht innerhalb des threads zum ausfuehren von weiteren massnahmen
     public void queueThumbnail(T target, String url){ // erwartet ein Objekt vom Typ T, welches als identifier fuer den download benutzt wird
         Log.i(TAG, "Got a url: " + url);
 
@@ -85,6 +86,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
         }
     }
 
+    // wird vom hauptthread aufgerufen, cached ein foto und schickt eine nachricht innerhalb des threads zum ausfuehren von weiteren massnahmen
     public void preloadImage(String url){
         mRequestHandler.obtainMessage(MESSAGE_PRELOAD,url).sendToTarget();
     }
