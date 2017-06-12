@@ -1,27 +1,43 @@
 package com.example.photogallery;
 
 import android.Manifest;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.SearchView;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import static android.app.Activity.RESULT_OK;
+import static android.app.ProgressDialog.STYLE_SPINNER;
 import static android.support.v7.widget.RecyclerView.SCROLL_STATE_IDLE;
 
 /**
@@ -30,6 +46,8 @@ import static android.support.v7.widget.RecyclerView.SCROLL_STATE_IDLE;
 
 public class PhotoGalleryFragment extends Fragment {
     private static final String TAG="PhotoGalleryFragment";
+    private static final String DIALOG_PHOTO="DialogPhoto";
+    private static int REQUEST_ZOOMED_PHOTO=0;
 
     private RecyclerView mPhotoRecyclerView;
     private android.support.v7.widget.GridLayoutManager mGridLayoutManager;
@@ -41,8 +59,8 @@ public class PhotoGalleryFragment extends Fragment {
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
     
-    ProgressDialog mDialog = new ProgressDialog(getActivity());
-
+    private ProgressDialog mDialog;
+    private InputMethodManager imm;
     
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
@@ -52,9 +70,8 @@ public class PhotoGalleryFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        setHasOptions(true);
-        // new FetchItemsTask().execute(mPages); // startet den async-task
-        updateItems(mPages);
+        setHasOptionsMenu(true);
+        updateItems(mPages); // startet den async-task
         
         Intent i=PollService.newIntent(getActivity());
         getActivity().startService(i);
@@ -78,6 +95,7 @@ public class PhotoGalleryFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
         View v=inflater.inflate(R.layout.fragment_photo_gallery,container,false);
+        imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
         mPhotoRecyclerView=(RecyclerView) v.findViewById(R.id.photo_recycler_view);
         mCurrentPageTextView=(TextView) v.findViewById(R.id.current_page_text_view);
         updatePageNumber();
@@ -102,7 +120,7 @@ public class PhotoGalleryFragment extends Fragment {
                         if(mItems.size()<=mPages*100 && (mPages-1)*100<=mItems.size()+(mPages%3)) { // erst dann zeug laden, wenn die vorigen fotos alle heruntergeladen wurden (sinnvoll??)
                         mPages++;
                         mCurrentPage++;
-                            new FetchItemsTask().execute(mCurrentPage);
+                            new FetchItemsTask(null).execute(mCurrentPage);
                         }
                     }
                     else if(mGridLayoutManager.findLastVisibleItemPosition()>=(mCurrentPage)*100){
@@ -161,12 +179,19 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.quit(); // thread muss separat zerstoert werden -- andernfalls wird er zum zombie, sprich er hat keinen mutterprozess
         Log.i(TAG,"Background thread destroyed");
     }
+
+    @Override
+    public void onResume(){
+        super.onResume();
+        imm.hideSoftInputFromInputMethod(getActivity().getWindow().getDecorView().getWindowToken(),InputMethodManager.HIDE_NOT_ALWAYS);
+        getActivity().getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+    }
     
     @Override
-    public void onCreateOptionsMenu(Menu menu,MenuInflator menuInflator){
+    public void onCreateOptionsMenu(Menu menu, MenuInflater menuInflator){
         super.onCreateOptionsMenu(menu,menuInflator);
         menuInflator.inflate(R.menu.fragment_photo_gallery,menu);
-        MenuItem searchItem=menu.findItem(R.id.menu_item_search);
+        final MenuItem searchItem=menu.findItem(R.id.menu_item_search);
         final SearchView searchView=(SearchView) searchItem.getActionView();
         
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener(){
@@ -174,20 +199,11 @@ public class PhotoGalleryFragment extends Fragment {
             public boolean onQueryTextSubmit(String s){
                 Log.d(TAG,"QueryTextSubmit: "+s);
                 QueryPreferences.setStoredQuery(getActivity(),s);
-                // keyboard verschwinden lassen 
-                InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+                // keyboard verschwinden lassen
                 imm.hideSoftInputFromWindow(searchView.getWindowToken(), 0);
                 // searchview einklappen
                 searchItem.collapseActionView();
-                // loading indicator anzeigen lassen (wirbelnder kreis...)
-                mPhotoRecyclerView.clear();
-                // TODO ...
-                // ProgressDialog mDialog = new ProgressDialog(getActivity());
-                mDialog.setMessage("Please wait...");
-                // mDialog.setIndeterminate(true);
-                mDialog.setCancelable(true);
-                mDialog.setProgressStyle(STYLE_SPINNER); // ignoriert setIndeterminate-Setting
-                mDialog.show();
+                clearGallery();
                 updateItems(1);
                 return true;
             }
@@ -211,28 +227,46 @@ public class PhotoGalleryFragment extends Fragment {
     
     @Override
     public boolean onOptionsItemSelected(MenuItem item){
-        switch(item.getItemId())
-        case R.id.menu_item_refresh:
-        // adapter des recyclerviews loeschen, cache loeschen und neuen adapter anhaengen
-        mThumbnailDownloader.clearCache();
-        mItems.clear();
-        mPhotoRecyclerView.clear();
-        mPages=1;
-        mCurrentPage=1;
-        updateItems(mPages);
-        return true;
-        
-        case R.id.menu_item_clear:
-        QueryPreferences.setStoredQuery(getActivity(),null);
-        updateItems;
-        return true;
-        
-        default: return super.onOptionsItemSelected(item);
+        switch(item.getItemId()) {
+            case R.id.menu_item_refresh:
+                // adapter des recyclerviews loeschen, cache loeschen und neuen adapter anhaengen
+                clearGallery();
+                mPages = 1;
+                mCurrentPage = 1;
+                updateItems(mPages);
+                return true;
+
+            case R.id.menu_item_clear:
+                QueryPreferences.setStoredQuery(getActivity(), null);
+                clearGallery();
+                updateItems(1);
+                return true;
+
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
     
     private void updateItems(int page){
         String query=QueryPreferences.getStoredQuery(getActivity());
         new FetchItemsTask(query).execute(page);
+    }
+
+    private void clearGallery(){
+        mItems.clear();
+        mThumbnailDownloader.clearCache();
+        mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode != RESULT_OK) {
+            return;
+        }
+
+        else if(resultCode==REQUEST_ZOOMED_PHOTO){
+            // TODO
+        }
     }
 
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
@@ -277,12 +311,49 @@ public class PhotoGalleryFragment extends Fragment {
     private class PhotoHolder extends RecyclerView.ViewHolder{
         // private TextView mTitleTextView;
         private ImageView mItemImageView;
-        private GalleryItem mGalleryItem;
+        private Drawable mDrawable;
 
         public PhotoHolder(View itemView){
             super(itemView);
             // mTitleTextView=(TextView) itemView;
             mItemImageView=(ImageView) itemView.findViewById(R.id.item_image_view);
+            mItemImageView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FragmentManager manager=getFragmentManager();
+
+                    Drawable drawable=getDrawable();
+                    Bitmap bitmap=drawableToBitmap(drawable);
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos); // wegen '100' bleibt die quali erhalten
+                    byte[] b = baos.toByteArray();
+                    ZoomedPhotoFragment dialog=ZoomedPhotoFragment.newInstance(b);
+                    dialog.setTargetFragment(PhotoGalleryFragment.this,REQUEST_ZOOMED_PHOTO); // TargetFragment ist das Fragment, das Daten von einem anderen Fragment bekommen soll, wenn es zerstoert wird. wir haben somit eine Verbindung zwischen CrimeFragment un DatePickerFragment
+                    dialog.show(manager,DIALOG_PHOTO);
+                }
+            });
+        }
+
+        public Bitmap drawableToBitmap (Drawable drawable) {
+            Bitmap bitmap = null;
+
+            if (drawable instanceof BitmapDrawable) {
+                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+                if(bitmapDrawable.getBitmap() != null) {
+                    return bitmapDrawable.getBitmap();
+                }
+            }
+
+            if(drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
+                bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); // Single color bitmap will be created of 1x1 pixel
+            } else {
+                bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+            }
+
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+            drawable.draw(canvas);
+            return bitmap;
         }
 
         /*public void bindGalleryItem(GalleryItem item){
@@ -290,7 +361,12 @@ public class PhotoGalleryFragment extends Fragment {
         }*/
 
         public void bindDrawable(Drawable drawable){
+            mDrawable=drawable;
             mItemImageView.setImageDrawable(drawable);
+        }
+
+        private Drawable getDrawable(){
+            return mDrawable;
         }
     }
 
@@ -302,6 +378,19 @@ public class PhotoGalleryFragment extends Fragment {
         
         public FetchItemsTask(String query){
             mQuery=query;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            if(mPhotoRecyclerView!=null) {
+                mPhotoRecyclerView.setVisibility(View.INVISIBLE);
+            }
+            mDialog = new ProgressDialog(getActivity());
+            mDialog.setTitle("Photos are being loaded");
+            mDialog.setMessage("Please wait...");
+            mDialog.setCancelable(false);
+            mDialog.setIndeterminate(true);
+            mDialog.show();
         }
         
         @Override
@@ -321,11 +410,12 @@ public class PhotoGalleryFragment extends Fragment {
             if(mItems.size()==0){
                 setupAdapter();
             }
-            else{
-                mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
+            mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
+            mPhotoRecyclerView.setVisibility(View.VISIBLE);
+            if(mDialog!=null){
+                mDialog.cancel();
             }
-            // wenn json-daten geladen wurden, soll dialog verschwinden
-            mDialog.onStop();
+            imm.hideSoftInputFromInputMethod(getActivity().getWindow().getDecorView().getWindowToken(),0);
         }
     }
 }

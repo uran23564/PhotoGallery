@@ -72,8 +72,8 @@ public class FlickrFetchr{
         Uri.Builder uriBuilder=ENDPOINT.buildUpon().appendQueryParameter("method",method);
         if (method.equals(SEARCH_METHOD)){
             uriBuilder.appendQueryParameter("text", query);
-        } else if(method.equals(FETCH_RECENTS_METHOD){
-            uri.Builder.appendQueryParameter("page" page);
+        } else if(method.equals(FETCH_RECENTS_METHOD)){
+            uriBuilder.appendQueryParameter("page", String.valueOf(page));
         }
         return uriBuilder.build().toString();
     }

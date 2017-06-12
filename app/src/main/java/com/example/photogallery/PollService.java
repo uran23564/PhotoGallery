@@ -1,8 +1,20 @@
 package com.example.photogallery;
 
-public class PollService extends IntentService{
+import android.app.AlarmManager;
+import android.app.IntentService;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.os.SystemClock;
+import android.util.Log;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+public class PollService extends IntentService {
     private static final String TAG="PollService";
-    private static final long POLL_INTERVALL_MS=TimeUnit.MINUTES.toMillies(1); // zeitintervall betraegt eine minute
+    private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt eine minute
     
     // Intents eines Services heissen Commands. Jedes Kommando ist eine Anweisung an den Service etwas zu erledigen.
     // Die empfangenen Kommandos kommen in eine Schlange, wo sie Stueck fuer Stueck abgearbeitet werden
@@ -21,7 +33,7 @@ public class PollService extends IntentService{
         
         if(isOn){
             // erster parameter ist die zeit-basis des alarms, dann die zeit, ab der gemessen werden soll, das zeitintervall und schliesslich den zu startenden PendingIntent
-            alarmManager.setRepeating(AlarmManager.ELAPSED_REALTIME,SystemClock.elapsedRealtime(),POLL_INTERVALL_MS,pi);
+            alarmManager.setRepeating(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime(),POLL_INTERVALL_MS,pi);
         } else{
             alarmManager.cancel(pi);
             pi.cancel();
@@ -34,7 +46,7 @@ public class PollService extends IntentService{
     
     @Override
     protected void onHandleIntent(Intent intent){
-        if(!isNetworkAvailableAndConnected){
+        if(!isNetworkAvailableAndConnected()){
             return;
         }
         Log.i(TAG,"Received an intent: " + intent);
@@ -42,7 +54,7 @@ public class PollService extends IntentService{
         // frage datenbank nach letzter anfrage und erhaltenem foto
         String query=QueryPreferences.getStoredQuery(this);
         String lastResultId=QueryPreferences.getLastResultId(this);
-        List<GalleryItems> items;
+        List<GalleryItem> items;
         
         if(query==null){
             items=new FlickrFetchr().fetchRecentPhotos(1);

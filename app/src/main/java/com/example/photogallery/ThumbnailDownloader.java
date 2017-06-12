@@ -100,7 +100,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
         mRequestMap.clear();
     }
 
-    private void clearCache(){
+    public void clearCache(){
         mLruCache.evictAll();
     }
 
