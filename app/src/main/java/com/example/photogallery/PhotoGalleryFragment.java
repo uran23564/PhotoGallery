@@ -55,6 +55,9 @@ public class PhotoGalleryFragment extends Fragment {
         setHasOptions(true);
         // new FetchItemsTask().execute(mPages); // startet den async-task
         updateItems(mPages);
+        
+        Intent i=PollService.newIntent(getActivity());
+        getActivity().startService(i);
 
         Handler thumbnailResponseHandler=new Handler(); // handler gehoert dem mainthread
 
