@@ -317,12 +317,12 @@ public class PhotoGalleryFragment extends Fragment {
             mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
             if(mItems.size()==0){
                 setupAdapter();
-                // wenn json-daten geladen wurden, soll dialog verschwinden
-                mDialog.onStop();
             }
             else{
                 mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
             }
+            // wenn json-daten geladen wurden, soll dialog verschwinden
+            mDialog.onStop();
         }
     }
 }
