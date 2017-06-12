@@ -40,6 +40,8 @@ public class PhotoGalleryFragment extends Fragment {
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
+    
+    ProgressDialog mDialog = new ProgressDialog(getActivity());
 
     
     public static PhotoGalleryFragment newInstance(){
@@ -50,7 +52,9 @@ public class PhotoGalleryFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        new FetchItemsTask().execute(mPages); // startet den async-task
+        setHasOptions(true);
+        // new FetchItemsTask().execute(mPages); // startet den async-task
+        updateItems(mPages);
 
         Handler thumbnailResponseHandler=new Handler(); // handler gehoert dem mainthread
 
@@ -154,6 +158,79 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.quit(); // thread muss separat zerstoert werden -- andernfalls wird er zum zombie, sprich er hat keinen mutterprozess
         Log.i(TAG,"Background thread destroyed");
     }
+    
+    @Override
+    public void onCreateOptionsMenu(Menu menu,MenuInflator menuInflator){
+        super.onCreateOptionsMenu(menu,menuInflator);
+        menuInflator.inflate(R.menu.fragment_photo_gallery,menu);
+        MenuItem searchItem=menu.findItem(R.id.menu_item_search);
+        final SearchView searchView=(SearchView) searchItem.getActionView();
+        
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener(){
+            @Override
+            public boolean onQueryTextSubmit(String s){
+                Log.d(TAG,"QueryTextSubmit: "+s);
+                QueryPreferences.setStoredQuery(getActivity(),s);
+                // keyboard verschwinden lassen 
+                InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+                imm.hideSoftInputFromWindow(searchView.getWindowToken(), 0);
+                // searchview einklappen
+                searchItem.collapseActionView();
+                // loading indicator anzeigen lassen (wirbelnder kreis...)
+                mPhotoRecyclerView.clear();
+                // TODO ...
+                // ProgressDialog mDialog = new ProgressDialog(getActivity());
+                mDialog.setMessage("Please wait...");
+                // mDialog.setIndeterminate(true);
+                mDialog.setCancelable(true);
+                mDialog.setProgressStyle(STYLE_SPINNER); // ignoriert setIndeterminate-Setting
+                mDialog.show();
+                updateItems(1);
+                return true;
+            }
+            
+            @Override
+            public boolean onQueryTextChange(String s){
+                Log.d(TAG,"QueryTextChange: "+s);
+                return false;
+            }
+        });
+        
+        searchView.setOnSearchClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                String query=QueryPreferences.getStoredQuery(getActivity());
+                searchView.setQuery(query,false); // 
+            }
+        });
+        
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item){
+        switch(item.getItemId())
+        case R.id.menu_item_refresh:
+        // adapter des recyclerviews loeschen, cache loeschen und neuen adapter anhaengen
+        mThumbnailDownloader.clearCache();
+        mItems.clear();
+        mPhotoRecyclerView.clear();
+        mPages=1;
+        mCurrentPage=1;
+        updateItems(mPages);
+        return true;
+        
+        case R.id.menu_item_clear:
+        QueryPreferences.setStoredQuery(getActivity(),null);
+        updateItems;
+        return true;
+        
+        default: return super.onOptionsItemSelected(item);
+    }
+    
+    private void updateItems(int page){
+        String query=QueryPreferences.getStoredQuery(getActivity());
+        new FetchItemsTask(query).execute(page);
+    }
 
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
         private List<GalleryItem> mGalleryItems;
@@ -218,9 +295,21 @@ public class PhotoGalleryFragment extends Fragment {
     private class FetchItemsTask extends AsyncTask<Integer,Void,List<GalleryItem>> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
         // erster parameter gibt typ der parameter an, die beim aufruf von AsyncTask.execute() uebergeben werden
         // dritter parameter oben gibt den typ des resultats von doInBackground an. dies ist automatisch auch der typ, der als argument in onPostExecute verwendet werden muss
+        private String mQuery;
+        
+        public FetchItemsTask(String query){
+            mQuery=query;
+        }
+        
         @Override
         protected List<GalleryItem> doInBackground(Integer... params){ // das zeug laeuft im hintergrund ab
-            return new FlickrFetchr().fetchItemsFromPage(params[0]);
+            // return new FlickrFetchr().fetchItemsFromPage(params[0]);
+            // String query="robot"; // zum testen
+            if(mQuery==null){
+                return new FlickrFetchr().fetchRecentPhotos(params[0]);
+            } else{
+                return new FlickrFetchr().searchPhotos(mQuery);
+            }
         }
 
         @Override
@@ -228,6 +317,8 @@ public class PhotoGalleryFragment extends Fragment {
             mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
             if(mItems.size()==0){
                 setupAdapter();
+                // wenn json-daten geladen wurden, soll dialog verschwinden
+                mDialog.onStop();
             }
             else{
                 mPhotoRecyclerView.getAdapter().notifyDataSetChanged();

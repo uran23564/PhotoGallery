@@ -21,6 +21,14 @@ import java.util.List;
 public class FlickrFetchr{
     private static final String TAG="FlickrFetchr";
     private static final String API_KEY="0363ad859a7ae1001843f4baa4a865ce";
+    private static final String FETCH_RECENTS_METHOD="flickr.photos.getRecent";
+    private static final String SEARCH_METHOD="flickr.photos.search";
+    private static final Uri ENDPOINT=Uri.parse("https://api.flickr.com/services/rest").buildUpon()
+                    .appendQueryParameter("api_key", API_KEY)
+                    .appendQueryParameter("format", "json")
+                    .appendQueryParameter("nojsoncallback", "1")
+                    .appendQueryParameter("extras", "url_s") // sagt Flickr, dass wir auch dir url fuer die kleine version des bildes haben wollen (wenn sie existiert)
+                    .build();
 
     private List<GalleryItem> mItems=new ArrayList<>();
     
@@ -49,42 +57,38 @@ public class FlickrFetchr{
     public String getUrlString(String urlSpec) throws IOException { // extrahiert String aus dem ByteArray der URL
         return new String(getUrlBytes(urlSpec));
     }
+    
+    public List<GalleryItem> fetchRecentPhotos(int page){
+        String url=buildUrl(FETCH_RECENTS_METHOD,null,page);
+        return downloadGalleryItemsFromPage(page,url);
+    }
+    
+    public List<GalleryItem> searchPhotos(String query){
+        String url=buildUrl(SEARCH_METHOD,query,0);
+        return downloadGalleryItemsFromPage(0,url);
+    }
+    
+    private String buildUrl(String method, String query, int page){
+        Uri.Builder uriBuilder=ENDPOINT.buildUpon().appendQueryParameter("method",method);
+        if (method.equals(SEARCH_METHOD)){
+            uriBuilder.appendQueryParameter("text", query);
+        } else if(method.equals(FETCH_RECENTS_METHOD){
+            uri.Builder.appendQueryParameter("page" page);
+        }
+        return uriBuilder.build().toString();
+    }
 
-//     public List<GalleryItem> fetchItems(){ // baut die entsprechende Request-URL zusammen und laedt die dazugehoerigen daten runter
-//         // List<GalleryItem> items=new ArrayList<>();
-// 
-//         try{
+    
+    private List<GalleryItem> downloadGalleryItemsFromPage(Integer page,String url){
+        try{
 //             String url= Uri.parse("https://api.flickr.com/services/rest").buildUpon()
 //                     .appendQueryParameter("method", "flickr.photos.getRecent")
 //                     .appendQueryParameter("api_key", API_KEY)
 //                     .appendQueryParameter("format", "json")
 //                     .appendQueryParameter("nojsoncallback", "1")
 //                     .appendQueryParameter("extras", "url_s") // sagt Flickr, dass wir auch dir url fuer die kleine version des bildes haben wollen (wenn sie existiert)
+//                     .appendQueryParameter("page", String.valueOf(page))
 //                     .build().toString();
-//             String jsonString = getUrlString(url);
-//             Log.i(TAG, "Received JSON: " + jsonString);
-//             JSONObject jsonBody = new JSONObject(jsonString); // json-konstruktor uebersetzt die json-hierarchie, die im string abgespeichert ist, in ein entsprechendes java-objekt mit der selben hierarchie
-//             // hiert ist jsonBody das top-level-Objekt, das das JSONArray photo traegt, welches wiederum eine Familie von JSON-Objekten beinhaltet. jedes davon stellt die metadaten eines einzelnen fotos dar
-//             parseItems(mItems,jsonBody);
-//         } catch(IOException ioe){
-//             Log.e(TAG, "Failed to fetch items", ioe);
-//         } catch(JSONException je){
-//             Log.e(TAG, "Failed to parse JSON", je);
-//         }
-// 
-//         return mItems;
-//     }
-    
-    public List<GalleryItem> fetchItemsFromPage(Integer page){
-        try{
-            String url= Uri.parse("https://api.flickr.com/services/rest").buildUpon()
-                    .appendQueryParameter("method", "flickr.photos.getRecent")
-                    .appendQueryParameter("api_key", API_KEY)
-                    .appendQueryParameter("format", "json")
-                    .appendQueryParameter("nojsoncallback", "1")
-                    .appendQueryParameter("extras", "url_s") // sagt Flickr, dass wir auch dir url fuer die kleine version des bildes haben wollen (wenn sie existiert)
-                    .appendQueryParameter("page", String.valueOf(page))
-                    .build().toString();
             String jsonString = getUrlString(url);
             Log.i(TAG, "Received JSON: " + jsonString);
             JSONObject jsonBody = new JSONObject(jsonString); // json-konstruktor uebersetzt die json-hierarchie, die im string abgespeichert ist, in ein entsprechendes java-objekt mit der selben hierarchie
