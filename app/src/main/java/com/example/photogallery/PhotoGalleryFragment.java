@@ -58,6 +58,7 @@ public class PhotoGalleryFragment extends Fragment {
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
+    // private ThumbnailDownloader<GalleryItem> mPhotoDownloader;
     
     private ProgressDialog mDialog;
     private InputMethodManager imm;
@@ -73,8 +74,9 @@ public class PhotoGalleryFragment extends Fragment {
         setHasOptionsMenu(true);
         updateItems(mPages); // startet den async-task
         
-        Intent i=PollService.newIntent(getActivity());
-        getActivity().startService(i);
+        // Intent i=PollService.newIntent(getActivity());
+        // getActivity().startService(i);
+        // PollService.setAlarm(getActivity(),true); // frisst baterie auf
 
         Handler thumbnailResponseHandler=new Handler(); // handler gehoert dem mainthread
 
@@ -89,6 +91,19 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.start();
         mThumbnailDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
         Log.i(TAG, "Background thread started");
+        
+        /*
+        mPhotoDownloader=new ThumbnailDownloader<>(thumbnailResponseHandler);
+        mPhotoDownloader.setThumbnailDownloadListener(new ThumbnailDownloader.ThumbnailDownloadListener<GalleryItem>() {
+            @Override
+            public void onThumbnailDownloaded(GalleryItem galleryItem, Bitmap bitmap) {
+                galleryItem.setBitmap(bitmap);
+            }
+        });
+        mPhotoDownloader.start();
+        mPhotoDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
+        Log.i(TAG, "Background thread started");
+        */
 
     }
 
@@ -191,6 +206,7 @@ public class PhotoGalleryFragment extends Fragment {
     public void onCreateOptionsMenu(Menu menu, MenuInflater menuInflator){
         super.onCreateOptionsMenu(menu,menuInflator);
         menuInflator.inflate(R.menu.fragment_photo_gallery,menu);
+        MenuItem toggleItem=menu.findItem(R.id.menu_item_toggle_polling);
         final MenuItem searchItem=menu.findItem(R.id.menu_item_search);
         final SearchView searchView=(SearchView) searchItem.getActionView();
         
@@ -223,6 +239,11 @@ public class PhotoGalleryFragment extends Fragment {
             }
         });
         
+        if(PollService.isServiceAlarmOn(getActivity())){
+            toggleItem.setTitle(R.string.stop_polling);
+        } else{
+            toggleItem.setTitle(R.string.start_polling);
+        }
     }
     
     @Override
@@ -240,6 +261,12 @@ public class PhotoGalleryFragment extends Fragment {
                 QueryPreferences.setStoredQuery(getActivity(), null);
                 clearGallery();
                 updateItems(1);
+                return true;
+                
+            case R.id.menu_item_toggle_polling:
+                boolean shouldStartAlarm=!PollService.isServiceAlarmOn(getActivity());
+                PollService.setServiceAlarm(getActivity(),shouldStartAlarm);
+                getActivity().invalidateOptionsMenu();
                 return true;
 
             default:
@@ -299,6 +326,7 @@ public class PhotoGalleryFragment extends Fragment {
                 Log.i(TAG,"Image loaded from cache");
                 photoHolder.bindDrawable(new BitmapDrawable(getResources(),bitmap));
             }
+            photoHolder.setItem(galleryItem);
         }
 
         @Override
@@ -312,6 +340,7 @@ public class PhotoGalleryFragment extends Fragment {
         // private TextView mTitleTextView;
         private ImageView mItemImageView;
         private Drawable mDrawable;
+        private GalleryItem mItem;
 
         public PhotoHolder(View itemView){
             super(itemView);
@@ -322,8 +351,13 @@ public class PhotoGalleryFragment extends Fragment {
                 public void onClick(View v) {
                     FragmentManager manager=getFragmentManager();
 
-                    Drawable drawable=getDrawable();
-                    Bitmap bitmap=drawableToBitmap(drawable);
+                    // Drawable drawable=getDrawable();
+                    // Bitmap bitmap=PictureUtils.drawableToBitmap(drawable);
+                    
+                    GalleryItem fullPhoto=new FetchFullItemTask(mItem);
+                    mPhotoDownloader.queueThumbnail(bitmap,fullPhoto.getUrl());
+                    Bitmap bitmap=fullPhoto.getBitmap();
+                    
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos); // wegen '100' bleibt die quali erhalten
                     byte[] b = baos.toByteArray();
@@ -333,28 +367,10 @@ public class PhotoGalleryFragment extends Fragment {
                 }
             });
         }
+        
+        public setItem(GalleryItem item){mItem=item;}
 
-        public Bitmap drawableToBitmap (Drawable drawable) {
-            Bitmap bitmap = null;
-
-            if (drawable instanceof BitmapDrawable) {
-                BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
-                if(bitmapDrawable.getBitmap() != null) {
-                    return bitmapDrawable.getBitmap();
-                }
-            }
-
-            if(drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
-                bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); // Single color bitmap will be created of 1x1 pixel
-            } else {
-                bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
-            }
-
-            Canvas canvas = new Canvas(bitmap);
-            drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-            drawable.draw(canvas);
-            return bitmap;
-        }
+        
 
         /*public void bindGalleryItem(GalleryItem item){
             // mTitleTextView.setText(item.toString()); // stellt nur die caption dar
@@ -365,9 +381,9 @@ public class PhotoGalleryFragment extends Fragment {
             mItemImageView.setImageDrawable(drawable);
         }
 
-        private Drawable getDrawable(){
-            return mDrawable;
-        }
+//         private Drawable getDrawable(){
+//             return mDrawable;
+//         }
     }
 
 
@@ -386,8 +402,8 @@ public class PhotoGalleryFragment extends Fragment {
                 mPhotoRecyclerView.setVisibility(View.INVISIBLE);
             }
             mDialog = new ProgressDialog(getActivity());
-            mDialog.setTitle("Photos are being loaded");
-            mDialog.setMessage("Please wait...");
+            mDialog.setTitle(R.string.progressdialog_title);
+            mDialog.setMessage(R.string.progressdialog_text);
             mDialog.setCancelable(false);
             mDialog.setIndeterminate(true);
             mDialog.show();
@@ -416,6 +432,36 @@ public class PhotoGalleryFragment extends Fragment {
                 mDialog.cancel();
             }
             imm.hideSoftInputFromInputMethod(getActivity().getWindow().getDecorView().getWindowToken(),0);
+        }
+    }
+    
+    private class FetchFullItemTask extends AsyncTask<Void,Void,GalleryItem> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
+        // erster parameter gibt typ der parameter an, die beim aufruf von AsyncTask.execute() uebergeben werden
+        // dritter parameter oben gibt den typ des resultats von doInBackground an. dies ist automatisch auch der typ, der als argument in onPostExecute verwendet werden muss
+        private GalleryItem mGalleryItem;
+        
+        public FetchFullItemTask(GalleryItem item){
+            mGalleryItem=item;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            mDialog = new ProgressDialog(getActivity());
+            mDialog.setTitle(R.values.Strings.progressbar_title);
+            mDialog.setMessage(R.values.Strings.progressbar_text);
+            mDialog.setCancelable(false);
+            mDialog.setIndeterminate(true);
+            mDialog.show();
+        }
+        
+        @Override
+        protected GalleryItem doInBackground(Void... params){ // das zeug laeuft im hintergrund ab
+            return new FlickrFetchr().fetchFullPhoto(mGalleryItem);
+        }
+
+        @Override
+        protected void onPostExecute(GalleryItem item){
+            
         }
     }
 }

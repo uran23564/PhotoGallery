@@ -13,7 +13,11 @@
 
 <item android:id="@+id/menu_item_refresh"
       android:title="@string/refresh"
-      app:showAsAction="always"
+      app:showAsAction="ifRoom"
       android:icon="@android:drawable/ic_menu_gallery"/>
+
+<item android:id="@+id/menu_item_toggle_polling"
+      android:title="@string/start_polling"
+      app:showAsAction="ifRoom"/>
 
 </menu>

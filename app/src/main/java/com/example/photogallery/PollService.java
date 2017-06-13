@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit;
 
 public class PollService extends IntentService {
     private static final String TAG="PollService";
-    private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt eine minute
+    private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt eine minute; zum testen
+    // private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt 15 minute
     
     // Intents eines Services heissen Commands. Jedes Kommando ist eine Anweisung an den Service etwas zu erledigen.
     // Die empfangenen Kommandos kommen in eine Schlange, wo sie Stueck fuer Stueck abgearbeitet werden
@@ -27,7 +28,9 @@ public class PollService extends IntentService {
     public static void setServiceAlarm(Context context, boolean isOn){
         Intent i=PollService.newIntent(context);
         // konstruktion eines PendingIntents braucht einen context, einen Request_Code, um pis voneinander zu unterscheiden, das zu sendende intent-objekt i und flags, die bestimmen, wie PendingIntent erzeugt wird
+        // PendingIntent lebt im OS, funktioniert daher auch, wenn die app zerstoert ist
         PendingIntent pi=PendingIntent.getService(context, 0, i, 0);
+        // jedes PendingIntent kann maximal einen Alarm verwalten
         AlarmManager alarmManager=(AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         // alarmmananger wird mit einem PendingIntent aufgerufen
         
@@ -38,6 +41,13 @@ public class PollService extends IntentService {
             alarmManager.cancel(pi);
             pi.cancel();
         }
+    }
+    
+    public static boolean isServiceAlarmOn(Context context){
+        Intent i=PollService.newIntent(context);
+        PendingIntent pi=PendingIntent.getService(context,0,i,PendingIntent.FLAG_NO_CREATE); // wenn pi nicht existiert, soll er nicht erstellt werden
+        // wenn pi==null ist, ist der alarm nicht gesetzt
+        return pi!=null;
     }
     
     public PollService(){
@@ -70,6 +80,24 @@ public class PollService extends IntentService {
             Log.i(TAG,"Got an old result: " +resultId);
         } else{
             Log.i(TAG,"Got a new result: " + resultId);
+        
+        
+            // zum handeln des PendingIntents, das wir von PhotoGalleryActivity bekommen, um diese zu starten
+            // dieses PendingIntent wird in eine Notification gesteckt
+            // PendingIntent bestimmt, was passiert, wenn die Notification gedrueckt wird
+            Resources resources=getResources();
+            Intent i=PhotoGalleryActivity.newIntent(this);
+            PendingIntent pi=PendingIntent.getActivity(this,0,i,0);
+            Notification notification=new NotificationCompat.Builder(this).
+                                            setTicker(resources.getString(R.string.new_pictures_title)).
+                                            setSmallIcon(android.R.drawable.ic_menu_report_image).
+                                            setContentTitle(resources.getString(R.string.new_pictures_title)).
+                                            setContentText(resources.getString(R.string.new_pictures_text)).
+                                            setContentIntent(pi).
+                                            setAutoCancel(true). // notification wird aus dem notification-drawer entfernt, wenn sie gedrueckt wird
+                                            build();
+            NotificationManagerCompat notificationManager=NotificationManagerCompat.from(this);
+            notificationManager.notify(0,notification); // erstes argument wird zur unterscheidung verschiedener notifications benutzt
         }
         
         QueryPreferences.setLastResultId(this,resultId);

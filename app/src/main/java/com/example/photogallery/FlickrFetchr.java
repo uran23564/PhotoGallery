@@ -23,6 +23,7 @@ public class FlickrFetchr{
     private static final String API_KEY="0363ad859a7ae1001843f4baa4a865ce";
     private static final String FETCH_RECENTS_METHOD="flickr.photos.getRecent";
     private static final String SEARCH_METHOD="flickr.photos.search";
+    
     private static final Uri ENDPOINT=Uri.parse("https://api.flickr.com/services/rest").buildUpon()
                     .appendQueryParameter("api_key", API_KEY)
                     .appendQueryParameter("format", "json")
@@ -68,6 +69,23 @@ public class FlickrFetchr{
         return downloadGalleryItemsFromPage(0,url);
     }
     
+    public GalleryItem fetchFullPhoto(GalleryItem galleryItem){
+        // TODO: ersetze die url des kleinen bildes durch die des normalen bildes
+        // beispiel-url: https://farm1.staticflickr.com/2/1418878_1e92283336_m.jpg; es muss lediglich der letzte buchstabe abgeaendert werden
+        // s steht fuer small, wir koennen z.b. m oder z oder gar nichts verwenden.
+        // GalleryItem newItem=galleryItem;
+        String url=galleryItem.getUrl;
+        String picUrl=Uri.getQueryParameter("extras");
+        String tokens[]=picUrl.split(".");
+        String newToken=tokens[0].subString(0,token[0].length-1)+"z";
+        picUrl=newToken+tokens[1];
+        
+        // newItem.setUrl(picUrl);
+        galleryItem.setUrl(picUrl);
+        // return newItem;
+        return galleryItem;
+    }
+    
     private String buildUrl(String method, String query, int page){
         Uri.Builder uriBuilder=ENDPOINT.buildUpon().appendQueryParameter("method",method);
         if (method.equals(SEARCH_METHOD)){
@@ -105,6 +123,7 @@ public class FlickrFetchr{
 
         return mItems;
     }
+    
 
     private void parseItems(List<GalleryItem> items, JSONObject jsonBody) throws IOException, JSONException{ // durchsucht das photos-array des json-objekts photo aus dem ober-json-objekt und steckt jedes foto
         // in ein GalleryItem-Objekt
@@ -126,4 +145,5 @@ public class FlickrFetchr{
             items.add(item);
         }
     }
+    
 }
