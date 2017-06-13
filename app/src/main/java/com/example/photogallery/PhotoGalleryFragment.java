@@ -58,7 +58,7 @@ public class PhotoGalleryFragment extends Fragment {
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
-    // private ThumbnailDownloader<GalleryItem> mPhotoDownloader;
+    private ThumbnailDownloader<GalleryItem> mPhotoDownloader;
     
     private ProgressDialog mDialog;
     private InputMethodManager imm;
@@ -92,7 +92,7 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
         Log.i(TAG, "Background thread started");
         
-        /*
+        
         mPhotoDownloader=new ThumbnailDownloader<>(thumbnailResponseHandler);
         mPhotoDownloader.setThumbnailDownloadListener(new ThumbnailDownloader.ThumbnailDownloadListener<GalleryItem>() {
             @Override
@@ -102,8 +102,7 @@ public class PhotoGalleryFragment extends Fragment {
         });
         mPhotoDownloader.start();
         mPhotoDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
-        Log.i(TAG, "Background thread started");
-        */
+        
 
     }
 
@@ -355,7 +354,7 @@ public class PhotoGalleryFragment extends Fragment {
                     // Bitmap bitmap=PictureUtils.drawableToBitmap(drawable);
                     
                     GalleryItem fullPhoto=new FetchFullItemTask(mItem);
-                    mPhotoDownloader.queueThumbnail(bitmap,fullPhoto.getUrl());
+                    mPhotoDownloader.queueThumbnail(fullPhoto,fullPhoto.getUrl());
                     Bitmap bitmap=fullPhoto.getBitmap();
                     
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
