@@ -349,7 +349,7 @@ public class PhotoGalleryFragment extends Fragment {
                     // initialisieren
                     mFullPhoto=null;
                     mFullPhotoByteArray=null;
-                    // TODO aufgaben auf neuen thread (mittels thumbnaildownloader) auslagern -- statt asynctask
+                    // TODO aufgaben auf neuen thread (mittels thumbnaildownloader) auslagern -- statt asynctask, dies gibt naemlich eine anr!!!
                     mFullPhoto=modifyUrl(getItem());
                     if(mFullPhoto.getUrl()!=null) {
                         new FetchFullPhoto(mFullPhoto.getUrl()).execute();
@@ -467,9 +467,9 @@ public class PhotoGalleryFragment extends Fragment {
 
         @Override
         protected byte[] doInBackground(Void... params){ // das zeug laeuft im hintergrund ab
-            // TODO: methode aus flickrfetchr verwenden
             try {
-                URL url = new java.net.URL(mUrl);
+                mFullPhotoByteArray=new FlickrFetchr().getFullPhotoBytes(mUrl);
+                /*URL url = new java.net.URL(mUrl);
                 HttpURLConnection connection = (HttpURLConnection) url
                         .openConnection();
                 connection.setDoInput(true);
@@ -486,8 +486,9 @@ public class PhotoGalleryFragment extends Fragment {
                 // bild koennte zusaetzlich im galleryitem gespeichert werden
                 // Bitmap bitmap=BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.toByteArray().length);
                 // mFullPhoto.setBitmap(bitmap);
-                mFullPhotoByteArray=out.toByteArray();
-                return out.toByteArray();
+                mFullPhotoByteArray=out.toByteArray();*/
+                return mFullPhotoByteArray;
+                // return out.toByteArray();
             } catch (IOException e) {
                 e.printStackTrace();
                 return null;
