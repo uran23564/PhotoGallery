@@ -20,6 +20,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     private static final String TAG="ThumbnailDownloader";
     private static final int MESSAGE_DOWNLOAD=0; // das 'what'-feld der nachricht (zum sortieren fuer den handler, was gemacht werden muss (naemlich was runterladen)
     private static final int MESSAGE_PRELOAD=1;
+    private static final int MESSAGE_FULL_PICTURE=2;
     private static final int CACHE_SIZE=16*1024*2014; // groesse des caches=16MB
 
     private boolean mHasQuit=false;
@@ -27,6 +28,10 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     private ConcurrentMap<T,String> mRequestMap=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
     private Handler mResponseHandler; // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
     private ThumbnailDownloadListener<T> mThumbnailDownloadListener;
+    private Handler mRequestHandler2; // Handler fuer die kommunikation innerhalb des threads
+    private ConcurrentMap<T,String> mRequestMap2=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
+    private Handler mResponseHandler2; // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
+    private ThumbnailDownloadListener<T> mThumbnailDownloadListener2;
     private LruCache<String,Bitmap> mLruCache;
 
     public interface ThumbnailDownloadListener<T>{
@@ -59,6 +64,11 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
                         String url=(String) msg.obj;
                         downloadImage(url);
                         break;
+
+                    case MESSAGE_FULL_PICTURE:
+                        T target2=(T) msg.obj;
+                        handleRequest2(target2);
+                        break;
                 }
             }
         };
@@ -86,6 +96,18 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
         }
     }
 
+    public void queueFullPhoto(T target,String url){
+        Log.i(TAG, "Got a url: " + url);
+
+        if(url==null){
+            // mRequestMap2.remove(target);
+        } else{
+            // mRequestMap2.put(target,url);
+            mRequestHandler.obtainMessage(MESSAGE_FULL_PICTURE,target).sendToTarget(); // neue nachricht fuer unseren handler wird erstellt. auftrag lautet runterladen.
+            url=null;
+        }
+    }
+
     // wird vom hauptthread aufgerufen, cached ein foto und schickt eine nachricht innerhalb des threads zum ausfuehren von weiteren massnahmen
     public void preloadImage(String url){
         mRequestHandler.obtainMessage(MESSAGE_PRELOAD,url).sendToTarget();
@@ -97,7 +119,9 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
 
     public void clearQueue(){ // falls geraet rotiert wird, raeumen wir auf, da ThumbnailDownloader evtl mit falschen PhotoHolders verknuepft sein koennte
         mRequestHandler.removeMessages(MESSAGE_DOWNLOAD);
+        mRequestHandler2.removeMessages(MESSAGE_FULL_PICTURE);
         mRequestMap.clear();
+        mRequestMap2.clear();
     }
 
     public void clearCache(){
@@ -124,6 +148,32 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
                     }
                     mRequestMap.remove(target);
                     mThumbnailDownloadListener.onThumbnailDownloaded(target,bitmap);
+                }
+            });
+        } catch (IOException ioe){
+            Log.e(TAG,"Error downloading image", ioe);
+        }
+    }
+
+    private void handleRequest2(final T target){ // methode, die der handler ausfuehrt, wenn er eine nachricht erhaelt
+        try{
+            final String url=mRequestMap2.get(target); // url des entsprechenden photoholders wird extrahiert
+            if(url==null){
+                return;
+            }
+
+            byte[] bitmapBytes=new FlickrFetchr().getUrlBytes(url);
+            final Bitmap bitmap= BitmapFactory.decodeByteArray(bitmapBytes,0,bitmapBytes.length);
+            Log.i(TAG,"Bitmap created");
+
+            mResponseHandler2.post(new Runnable() { // es wird eine nachricht an den handler des mainthreads geschickt, der den folgenden code (im mainthread!) ohne weiteres ausfuehrt
+                @Override
+                public void run() {
+                    if(mRequestMap2.get(target)!=url || mHasQuit){
+                        return;
+                    }
+                    mRequestMap2.remove(target);
+                    mThumbnailDownloadListener2.onThumbnailDownloaded(target,bitmap);
                 }
             });
         } catch (IOException ioe){

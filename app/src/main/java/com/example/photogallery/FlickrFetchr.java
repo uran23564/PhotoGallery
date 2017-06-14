@@ -54,6 +54,29 @@ public class FlickrFetchr{
         }
         finally { connection.disconnect();}
     }
+
+    public byte[] getFullPhotoBytes(String urlSpec) throws IOException{
+        try {
+            URL url = new java.net.URL(urlSpec);
+            HttpURLConnection connection = (HttpURLConnection) url
+                    .openConnection();
+            connection.setDoInput(true);
+            connection.connect();
+            InputStream in = connection.getInputStream();
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            byte[] b = new byte[2048];
+            int length;
+            while ((length = in.read(b)) != -1) {
+                out.write(b, 0, length);
+            }
+            in.close();
+            out.close();
+            return out.toByteArray();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
     
     public String getUrlString(String urlSpec) throws IOException { // extrahiert String aus dem ByteArray der URL
         return new String(getUrlBytes(urlSpec));
@@ -69,23 +92,7 @@ public class FlickrFetchr{
         return downloadGalleryItemsFromPage(0,url);
     }
     
-    public GalleryItem fetchFullPhoto(GalleryItem galleryItem){
-        // TODO: ersetze die url des kleinen bildes durch die des normalen bildes
-        // beispiel-url: https://farm1.staticflickr.com/2/1418878_1e92283336_m.jpg; es muss lediglich der letzte buchstabe abgeaendert werden
-        // s steht fuer small, wir koennen z.b. m oder z oder gar nichts verwenden.
-        // GalleryItem newItem=galleryItem;
-        String url=galleryItem.getUrl;
-        String picUrl=Uri.getQueryParameter("extras");
-        String tokens[]=picUrl.split(".");
-        String newToken=tokens[0].subString(0,token[0].length-1)+"z";
-        picUrl=newToken+tokens[1];
-        
-        // newItem.setUrl(picUrl);
-        galleryItem.setUrl(picUrl);
-        // return newItem;
-        return galleryItem;
-    }
-    
+
     private String buildUrl(String method, String query, int page){
         Uri.Builder uriBuilder=ENDPOINT.buildUpon().appendQueryParameter("method",method);
         if (method.equals(SEARCH_METHOD)){

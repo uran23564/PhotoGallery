@@ -1,5 +1,7 @@
 package com.example.photogallery;
 
+import android.graphics.Bitmap;
+
 /**
  * Created by merz_konstantin on 6/5/17.
  */
@@ -9,6 +11,8 @@ public class GalleryItem {
     private String mId; // ID des Bildes
     private String mUrl; // URL des Bildes
     private Bitmap mBitmap; // nur fuer die fetten Bilder
+
+
 
     @Override
     public String toString(){
@@ -26,5 +30,12 @@ public class GalleryItem {
     public void setId(String id){mId=id;}
     public void setUrl(String url){ mUrl=url;}
     public void setBitmap(Bitmap bitmap){ mBitmap=bitmap;}
+
+    public void copyItem(GalleryItem item){
+        mCaption=item.getCaption();
+        mId=item.getId();
+        mUrl=item.getUrl();
+        mBitmap=item.getBitmap();
+    }
 
 }
