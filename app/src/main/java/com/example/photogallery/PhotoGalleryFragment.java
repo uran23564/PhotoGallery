@@ -286,6 +286,9 @@ public class PhotoGalleryFragment extends Fragment {
 
         else if(resultCode==REQUEST_ZOOMED_PHOTO){
             // TODO
+            mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
+            mFullPhoto=null;
+            mFullPhotoByteArray=null;
         }
     }
 
@@ -343,7 +346,9 @@ public class PhotoGalleryFragment extends Fragment {
                 @Override
                 public void onClick(View v) {
                     FragmentManager manager=getFragmentManager();
-
+                    // initialisieren
+                    mFullPhoto=null;
+                    mFullPhotoByteArray=null;
                     // hier kein neuer thread benoetigt, user muss aufs bild warten
                     mFullPhoto=modifyUrl(getItem());
                     if(mFullPhoto.getUrl()!=null) {
@@ -357,13 +362,14 @@ public class PhotoGalleryFragment extends Fragment {
                         mBitmap.compress(Bitmap.CompressFormat.JPEG,100,baos);
                         byte[] b = baos.toByteArray();
                         ZoomedPhotoFragment dialog = ZoomedPhotoFragment.newInstance(b);*/
+                        // kann dauern bis das ding vollgeschrieben wurde
                         while(mFullPhotoByteArray==null ){
-                            mDialog = new ProgressDialog(getActivity());
+                            /*mDialog = new ProgressDialog(getActivity());
                             mDialog.setTitle("Photo is being loaded");
                             mDialog.setMessage("Please wait...");
                             mDialog.setCancelable(true);
                             mDialog.setIndeterminate(true);
-                            // mDialog.show();
+                            mDialog.show();*/
                         }
                         mDialog.dismiss();
                         mDialog.cancel();
@@ -480,15 +486,12 @@ public class PhotoGalleryFragment extends Fragment {
 
         @Override
         protected void onPreExecute() {
-            if(mPhotoRecyclerView!=null) {
-                mPhotoRecyclerView.setVisibility(View.INVISIBLE);
-            }
             mDialog = new ProgressDialog(getActivity());
             mDialog.setTitle("Photo is being loaded");
             mDialog.setMessage("Please wait...");
             mDialog.setCancelable(true);
             mDialog.setIndeterminate(true);
-            // mDialog.show();
+            mDialog.show();
         }
 
         @Override
