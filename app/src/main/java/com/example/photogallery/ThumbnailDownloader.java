@@ -28,10 +28,7 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
     private ConcurrentMap<T,String> mRequestMap=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
     private Handler mResponseHandler; // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
     private ThumbnailDownloadListener<T> mThumbnailDownloadListener;
-    private Handler mRequestHandler2; // Handler fuer die kommunikation innerhalb des threads
     private ConcurrentMap<T,String> mRequestMap2=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
-    private Handler mResponseHandler2; // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
-    private ThumbnailDownloadListener<T> mThumbnailDownloadListener2;
     private LruCache<String,Bitmap> mLruCache;
 
     public interface ThumbnailDownloadListener<T>{
@@ -119,7 +116,6 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
 
     public void clearQueue(){ // falls geraet rotiert wird, raeumen wir auf, da ThumbnailDownloader evtl mit falschen PhotoHolders verknuepft sein koennte
         mRequestHandler.removeMessages(MESSAGE_DOWNLOAD);
-        mRequestHandler2.removeMessages(MESSAGE_FULL_PICTURE);
         mRequestMap.clear();
         mRequestMap2.clear();
     }
@@ -166,14 +162,14 @@ public class ThumbnailDownloader<T> extends HandlerThread { // klasse hat einzel
             final Bitmap bitmap= BitmapFactory.decodeByteArray(bitmapBytes,0,bitmapBytes.length);
             Log.i(TAG,"Bitmap created");
 
-            mResponseHandler2.post(new Runnable() { // es wird eine nachricht an den handler des mainthreads geschickt, der den folgenden code (im mainthread!) ohne weiteres ausfuehrt
+            mResponseHandler.post(new Runnable() { // es wird eine nachricht an den handler des mainthreads geschickt, der den folgenden code (im mainthread!) ohne weiteres ausfuehrt
                 @Override
                 public void run() {
                     if(mRequestMap2.get(target)!=url || mHasQuit){
                         return;
                     }
                     mRequestMap2.remove(target);
-                    mThumbnailDownloadListener2.onThumbnailDownloaded(target,bitmap);
+                    mThumbnailDownloadListener.onThumbnailDownloaded(target,bitmap);
                 }
             });
         } catch (IOException ioe){
