@@ -17,7 +17,7 @@ public class PhotoDownloader<T> extends HandlerThread {
     private static final String TAG="PhotoDownloader";
     private static final int MESSAGE_FULL_PICTURE=0;
 
-    private boolean mHasQuit=false;
+    private volatile boolean mHasQuit=false;
     byte[] mBytes=null;
     // Handler fuer die kommunikation innerhalb des threads
     private Handler mRequestHandler;
@@ -25,6 +25,7 @@ public class PhotoDownloader<T> extends HandlerThread {
     // Handler fuer den Hauptthread (wird diesem dann auch zugeordnet) wir koennen jedoch natuerlich hier auf diesen zugreifen und zum kommunizieren verwenden
     private Handler mResponseHandler;
     private PhotoDownloader.PhotoDownloadListener<T> mPhotoDownloadListener;
+    private volatile boolean mHasDownloaded=false;
 
     public interface PhotoDownloadListener<T>{
         void onPhotoDownloaded(T target, byte[] bytes);
@@ -62,6 +63,7 @@ public class PhotoDownloader<T> extends HandlerThread {
 
 
     public void queueFullPhoto(T target,String url){
+        mHasDownloaded=false;
         if(url==null){
             mRequestMap.remove(target);
             return;
@@ -97,8 +99,12 @@ public class PhotoDownloader<T> extends HandlerThread {
                 }
             });
             mBytes= bitmapBytes;
+            mHasDownloaded=true;
         } catch (IOException ioe){
             Log.e(TAG,"Error downloading image", ioe);
         }
     }
+
+    public byte[] getBytes(){ return mBytes;}
+    public boolean getHasDownloaded(){ return mHasDownloaded;}
 }

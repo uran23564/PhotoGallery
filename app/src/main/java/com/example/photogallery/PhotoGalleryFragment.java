@@ -106,8 +106,8 @@ public class PhotoGalleryFragment extends Fragment {
         mPhotoDownloader.setPhotoDownloadListener(new PhotoDownloader.PhotoDownloadListener<GalleryItem>() {
             @Override
             public void onPhotoDownloaded(GalleryItem item, byte[] bytes){
-                mFullPhotoByteArray=bytes; // setzt nur pointer gleich
-                // mFullPhotoByteArray= Arrays.copyOf(bytes,bytes.length); // allokiert neuen speicher, aber eben nur lokal
+                // mFullPhotoByteArray=bytes; // setzt nur pointer gleich. wenn die methode endet, wird auch das objekt item zerstoert, mFullArrayByteArray zeigt damit ins leere
+                mFullPhotoByteArray= Arrays.copyOf(bytes,bytes.length); // allokiert neuen speicher, aber eben nur lokal
                 // mFullPhotoByteArray=new byte[bytes.length]; // mFullPhotoByteArray-Objekt lebt nur hier lokal, wird nach Beendigung der Methode zerstoert
                 // System.arraycopy(bytes,0,mFullPhotoByteArray,0,bytes.length);
                 Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
@@ -370,37 +370,44 @@ public class PhotoGalleryFragment extends Fragment {
                 public void onClick(View v) {
                     FragmentManager manager=getFragmentManager();
                     // initialisieren
-                    byte[] bytes=null;
                     mFullPhoto=null;
                     mFullPhotoByteArray=null;
-                    // TODO aufgaben auf neuen thread (mittels thumbnaildownloader) auslagern -- statt asynctask, dies gibt naemlich eine anr!!!
-                    modifyOwnUrl();
+                    // modifyOwnUrl();
                     mFullPhoto=modifyUrl(getItem());
-                    if(mItem.getUrl()!=null){
-                    // if(mFullPhoto.getUrl()!=null) {
-                        // new FetchFullPhoto(mFullPhoto.getUrl()).execute(); // blockiert den mainthread
-                        /*GalleryItem testItem=new GalleryItem();
-                        testItem.copyItem(mFullPhoto);*/
-                        GalleryItem testItem=mFullPhoto;
+                    if(mFullPhoto.getUrl()!=null){
+                        // new FetchFullPhoto(mFullPhoto.getUrl()).execute(); // blockiert den mainthread und fuehrt u.U zu einer ANR
                         mPhotoDownloader.queueFullPhoto(mFullPhoto,mItem.getUrl());
-                        // kann dauern bis das ding vollgeschrieben wurde
-                        mDialog.show();
-                        try {
-                            Thread.sleep(TimeUnit.SECONDS.toMillis(1));
-                            // Thread.sleep(TimeUnit.SECONDS.toMillis(5)); // sinnvoller wert (?)
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
+                        boolean hasDownloaded=mPhotoDownloader.getHasDownloaded();
+                        // mFullPhotoByteArray=mPhotoDownloader.getBytes(); // so sollte man hintergrundthreads eigentlich nicht benutzen
+                        // idee: so lange warten, bis mBytes in PhotoDownloader beschrieben wurde
+                        while (!hasDownloaded) {
+                            /*try {
+                                // mPhotoDownloader.getBytes().wait();
+                                // Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+                                } catch (Exception e) { e.getMessage(); }*/
+                            int counter=0;
+                            try {
+                                Thread.sleep(TimeUnit.MILLISECONDS.toMillis(5));
+                                counter++;
+                                // TODO volatile verstehen und einsetzen, damit wir uns die naechste abfrage sparen koennen
+                                // TODO unterbrochene internetverbindung bzw. timeout handeln
+                                hasDownloaded=mPhotoDownloader.getHasDownloaded();
+                                if(counter>=1000){ break;} // nicht mehr als eine fuenf sekunden warten
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
                         }
-                        // warten...
-                        // while(mFullPhotoByteArray==null){}
-                        mDialog.cancel();
-                        // if(mFullPhotoByteArray==null){
+
+                        mFullPhotoByteArray=mPhotoDownloader.getBytes(); // so sollte man hintergrundthreads eigentlich nicht benutzen
+                        // TODO onPhotoDownloaded endlich richtig implementieren!!!
+
                         if(mFullPhotoByteArray==null){
-                            Toast toast = Toast.makeText(getActivity(), "Download was not successful :(", Toast.LENGTH_SHORT);
+                            Toast toast = Toast.makeText(getActivity(), "Timeout! Download was not successful :(", Toast.LENGTH_SHORT);
                             toast.show();
                             return;
                         }
                         ZoomedPhotoFragment dialog = ZoomedPhotoFragment.newInstance(mFullPhotoByteArray);
+                        mFullPhotoByteArray=null;
                         dialog.setTargetFragment(PhotoGalleryFragment.this, REQUEST_ZOOMED_PHOTO);
                         dialog.show(manager, DIALOG_PHOTO);
                     }
@@ -421,13 +428,13 @@ public class PhotoGalleryFragment extends Fragment {
             return item;
         }
 
-        private void modifyOwnUrl(){
+        /*private void modifyOwnUrl(){
             String picUrl=mItem.getUrl();
             String substring1=picUrl.substring(0,picUrl.lastIndexOf(".")-1); // ohne jpg-endung und ohne _s oder _m oder was auch immer
             String substring2=picUrl.substring(picUrl.lastIndexOf(".")+1);  // die datei-endung
             picUrl=substring1+"z."+substring2; // z, c, b, o groesse des bildes in aufsteigender reihenfolge
             mItem.setUrl(picUrl);
-        }
+        }*/
 
 
         public void bindDrawable(Drawable drawable){
@@ -495,7 +502,7 @@ public class PhotoGalleryFragment extends Fragment {
     }
 
 
-    private class FetchFullPhoto extends AsyncTask<Void,Void,byte[]> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
+    /*private class FetchFullPhoto extends AsyncTask<Void,Void,byte[]> { // bilder werden in einem neuen thread heruntergeladen -- dazu verwendenen wir die AsyncTask-Klasse
         // erster parameter gibt typ der parameter an, die beim aufruf von AsyncTask.execute() uebergeben werden
         // dritter parameter oben gibt den typ des resultats von doInBackground an. dies ist automatisch auch der typ, der als argument in onPostExecute verwendet werden muss
         private String mUrl;
@@ -536,6 +543,6 @@ public class PhotoGalleryFragment extends Fragment {
                 mDialog.cancel();
             }
         }
-    }
+    }*/
 
 }
