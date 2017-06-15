@@ -30,6 +30,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -37,6 +38,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -64,6 +66,7 @@ public class PhotoGalleryFragment extends Fragment {
     private int mPages=1; // wir starten mit einer seite
     private int mCurrentPage=1; // gerade angesehene Seite
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
+    private PhotoDownloader<GalleryItem>mPhotoDownloader;
     
     private ProgressDialog mDialog;
     private InputMethodManager imm;
@@ -84,6 +87,7 @@ public class PhotoGalleryFragment extends Fragment {
         // PollService.setAlarm(getActivity(),true); // frisst baterie auf
 
         Handler thumbnailResponseHandler=new Handler(); // handler gehoert dem mainthread
+        Handler fullPhotoResponseHandler=new Handler();
 
 
         mThumbnailDownloader=new ThumbnailDownloader<>(thumbnailResponseHandler);
@@ -96,6 +100,25 @@ public class PhotoGalleryFragment extends Fragment {
         });
         mThumbnailDownloader.start();
         mThumbnailDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
+        Log.i(TAG, "Background thread started");
+
+        mPhotoDownloader=new PhotoDownloader<>(fullPhotoResponseHandler);
+        mPhotoDownloader.setPhotoDownloadListener(new PhotoDownloader.PhotoDownloadListener<GalleryItem>() {
+            @Override
+            public void onPhotoDownloaded(GalleryItem item, byte[] bytes){
+                mFullPhotoByteArray=bytes; // setzt nur pointer gleich
+                // mFullPhotoByteArray= Arrays.copyOf(bytes,bytes.length); // allokiert neuen speicher, aber eben nur lokal
+                // mFullPhotoByteArray=new byte[bytes.length]; // mFullPhotoByteArray-Objekt lebt nur hier lokal, wird nach Beendigung der Methode zerstoert
+                // System.arraycopy(bytes,0,mFullPhotoByteArray,0,bytes.length);
+                Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                item.setBitmap(bitmap);
+                // holder.bindBitmap(bitmap);
+                // mFullPhoto=item;
+                mFullPhoto.setBitmap(bitmap);
+            }
+        });
+        mPhotoDownloader.start();
+        mPhotoDownloader.getLooper(); // sichergehen, dass wir alles noetige beisammen haben
         Log.i(TAG, "Background thread started");
         
     }
@@ -115,7 +138,6 @@ public class PhotoGalleryFragment extends Fragment {
         mPhotoRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener(){
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState){
-                int first=mGridLayoutManager.findFirstVisibleItemPosition();
                 if(newState==SCROLL_STATE_IDLE&&mGridLayoutManager.findFirstVisibleItemPosition()==0){
                     cacheNextPhotos(9,15);
                 }
@@ -341,21 +363,42 @@ public class PhotoGalleryFragment extends Fragment {
         public PhotoHolder(View itemView){
             super(itemView);
             // mTitleTextView=(TextView) itemView;
+            final PhotoHolder tmp=this;
             mItemImageView=(ImageView) itemView.findViewById(R.id.item_image_view);
             mItemImageView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     FragmentManager manager=getFragmentManager();
                     // initialisieren
+                    byte[] bytes=null;
                     mFullPhoto=null;
                     mFullPhotoByteArray=null;
                     // TODO aufgaben auf neuen thread (mittels thumbnaildownloader) auslagern -- statt asynctask, dies gibt naemlich eine anr!!!
+                    modifyOwnUrl();
                     mFullPhoto=modifyUrl(getItem());
-                    if(mFullPhoto.getUrl()!=null) {
-                        new FetchFullPhoto(mFullPhoto.getUrl()).execute();
+                    if(mItem.getUrl()!=null){
+                    // if(mFullPhoto.getUrl()!=null) {
+                        // new FetchFullPhoto(mFullPhoto.getUrl()).execute(); // blockiert den mainthread
+                        /*GalleryItem testItem=new GalleryItem();
+                        testItem.copyItem(mFullPhoto);*/
+                        GalleryItem testItem=mFullPhoto;
+                        mPhotoDownloader.queueFullPhoto(mFullPhoto,mItem.getUrl());
                         // kann dauern bis das ding vollgeschrieben wurde
-                        while(mFullPhotoByteArray==null ){
-                            // irgendwas sinnvolles machen??
+                        mDialog.show();
+                        try {
+                            Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+                            // Thread.sleep(TimeUnit.SECONDS.toMillis(5)); // sinnvoller wert (?)
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        // warten...
+                        // while(mFullPhotoByteArray==null){}
+                        mDialog.cancel();
+                        // if(mFullPhotoByteArray==null){
+                        if(mFullPhotoByteArray==null){
+                            Toast toast = Toast.makeText(getActivity(), "Download was not successful :(", Toast.LENGTH_SHORT);
+                            toast.show();
+                            return;
                         }
                         ZoomedPhotoFragment dialog = ZoomedPhotoFragment.newInstance(mFullPhotoByteArray);
                         dialog.setTargetFragment(PhotoGalleryFragment.this, REQUEST_ZOOMED_PHOTO);
@@ -373,25 +416,34 @@ public class PhotoGalleryFragment extends Fragment {
             String picUrl=item.getUrl();
             String substring1=picUrl.substring(0,picUrl.lastIndexOf(".")-1); // ohne jpg-endung und ohne _s oder _m oder was auch immer
             String substring2=picUrl.substring(picUrl.lastIndexOf(".")+1);  // die datei-endung
-            picUrl=substring1+"z."+substring2;
+            picUrl=substring1+"z."+substring2; // z, c, b, o groesse des bildes in aufsteigender reihenfolge
             item.setUrl(picUrl);
             return item;
+        }
+
+        private void modifyOwnUrl(){
+            String picUrl=mItem.getUrl();
+            String substring1=picUrl.substring(0,picUrl.lastIndexOf(".")-1); // ohne jpg-endung und ohne _s oder _m oder was auch immer
+            String substring2=picUrl.substring(picUrl.lastIndexOf(".")+1);  // die datei-endung
+            picUrl=substring1+"z."+substring2; // z, c, b, o groesse des bildes in aufsteigender reihenfolge
+            mItem.setUrl(picUrl);
         }
 
 
         public void bindDrawable(Drawable drawable){
             mItemImageView.setImageDrawable(drawable);
         }
-        
+        public void bindBitmap(Bitmap bitmap){
+            mItem.setBitmap(bitmap);
+        }
 
         /*public void bindGalleryItem(GalleryItem item){
-            // mTitleTextView.setText(item.toString()); // stellt nur die caption dar
+            mTitleTextView.setText(item.toString()); // stellt nur die caption dar
         }*/
 
-
-//      private Drawable getDrawable(){
-//             return mDrawable;
-//         }
+        /*private Drawable getDrawable(){
+            return mDrawable;
+        }*/
 
     }
 
@@ -413,7 +465,7 @@ public class PhotoGalleryFragment extends Fragment {
             mDialog = new ProgressDialog(getActivity());
             mDialog.setTitle(R.string.progressdialog_title);
             mDialog.setMessage("Please wait...");
-            mDialog.setCancelable(false);
+            mDialog.setCancelable(true);
             mDialog.setIndeterminate(true);
             mDialog.show();
         }
@@ -437,9 +489,7 @@ public class PhotoGalleryFragment extends Fragment {
             mItems.addAll(items); // schreibt die in doInBackground heruntergeladenen items endlich in das entsprechende objekt
             mPhotoRecyclerView.getAdapter().notifyDataSetChanged();
             mPhotoRecyclerView.setVisibility(View.VISIBLE);
-            if(mDialog!=null){
-                mDialog.cancel();
-            }
+            mDialog.cancel();
             imm.hideSoftInputFromInputMethod(getActivity().getWindow().getDecorView().getWindowToken(),0);
         }
     }
@@ -469,24 +519,9 @@ public class PhotoGalleryFragment extends Fragment {
         protected byte[] doInBackground(Void... params){ // das zeug laeuft im hintergrund ab
             try {
                 mFullPhotoByteArray=new FlickrFetchr().getFullPhotoBytes(mUrl);
-                /*URL url = new java.net.URL(mUrl);
-                HttpURLConnection connection = (HttpURLConnection) url
-                        .openConnection();
-                connection.setDoInput(true);
-                connection.connect();
-                InputStream in = connection.getInputStream();
-                ByteArrayOutputStream out=new ByteArrayOutputStream();
-                byte[] b = new byte[2048];
-                int length;
-                while ((length = in.read(b)) != -1) {
-                    out.write(b, 0, length);
-                }
-                in.close();
-                out.close();
                 // bild koennte zusaetzlich im galleryitem gespeichert werden
                 // Bitmap bitmap=BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.toByteArray().length);
                 // mFullPhoto.setBitmap(bitmap);
-                mFullPhotoByteArray=out.toByteArray();*/
                 return mFullPhotoByteArray;
                 // return out.toByteArray();
             } catch (IOException e) {

@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit;
 
 public class PollService extends IntentService {
     private static final String TAG="PollService";
-    private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt eine minute; zum testen
-    // private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt 15 minute
+    // private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt eine minute; zum testen
+    private static final long POLL_INTERVALL_MS= TimeUnit.MINUTES.toMillis(1); // zeitintervall betraegt 15 minute
     
     // Intents eines Services heissen Commands. Jedes Kommando ist eine Anweisung an den Service etwas zu erledigen.
     // Die empfangenen Kommandos kommen in eine Schlange, wo sie Stueck fuer Stueck abgearbeitet werden
