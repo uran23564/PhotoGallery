@@ -7,9 +7,9 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.ConnectivityManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -32,18 +32,13 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static android.app.Activity.RESULT_OK;
-import static android.app.ProgressDialog.STYLE_SPINNER;
+import static android.content.Context.CONNECTIVITY_SERVICE;
 import static android.support.v7.widget.RecyclerView.SCROLL_STATE_IDLE;
 
 /**
@@ -376,6 +371,10 @@ public class PhotoGalleryFragment extends Fragment {
                     mFullPhoto=modifyUrl(getItem());
                     if(mFullPhoto.getUrl()!=null){
                         // new FetchFullPhoto(mFullPhoto.getUrl()).execute(); // blockiert den mainthread und fuehrt u.U zu einer ANR
+                        if(!isNetworkAvailableAndConnected()){
+                            displayToast("No Internet Connection :(");
+                            return;
+                        }
                         mPhotoDownloader.queueFullPhoto(mFullPhoto,mItem.getUrl());
                         boolean hasDownloaded=mPhotoDownloader.getHasDownloaded();
                         // mFullPhotoByteArray=mPhotoDownloader.getBytes(); // so sollte man hintergrundthreads eigentlich nicht benutzen
@@ -390,9 +389,11 @@ public class PhotoGalleryFragment extends Fragment {
                                 Thread.sleep(TimeUnit.MILLISECONDS.toMillis(5));
                                 counter++;
                                 // TODO volatile verstehen und einsetzen, damit wir uns die naechste abfrage sparen koennen
-                                // TODO unterbrochene internetverbindung bzw. timeout handeln
                                 hasDownloaded=mPhotoDownloader.getHasDownloaded();
-                                if(counter>=1000){ break;} // nicht mehr als eine fuenf sekunden warten
+                                if(counter>=1000){
+                                    displayToast("Timeout! Download was not successful :-(");
+                                    return;
+                                } // nicht mehr als eine fuenf sekunden warten
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             }
@@ -402,8 +403,7 @@ public class PhotoGalleryFragment extends Fragment {
                         // TODO onPhotoDownloaded endlich richtig implementieren!!!
 
                         if(mFullPhotoByteArray==null){
-                            Toast toast = Toast.makeText(getActivity(), "Timeout! Download was not successful :(", Toast.LENGTH_SHORT);
-                            toast.show();
+                            displayToast("Idk what happened. Download was not successful :-(");
                             return;
                         }
                         ZoomedPhotoFragment dialog = ZoomedPhotoFragment.newInstance(mFullPhotoByteArray);
@@ -413,6 +413,21 @@ public class PhotoGalleryFragment extends Fragment {
                     }
                 }
             });
+        }
+
+        private boolean isNetworkAvailableAndConnected(){
+            ConnectivityManager cm=(ConnectivityManager) getActivity().getSystemService(CONNECTIVITY_SERVICE);
+
+            // erst schauen, ob es ein netzwerk gibt (darf die app z.B. im hintergrund nichts runterladen, gibt getActiveNetworkInfo null zurueck
+            boolean isNetworkAvailabe=cm.getActiveNetworkInfo()!=null;
+            boolean isNetworkConnected=isNetworkAvailabe && cm.getActiveNetworkInfo().isConnected();
+
+            return isNetworkConnected;
+        }
+
+        private void displayToast(String s){
+            Toast toast = Toast.makeText(getActivity(), s, Toast.LENGTH_SHORT);
+            toast.show();
         }
         
         public void setItem(GalleryItem item){mItem=item;}
@@ -514,7 +529,6 @@ public class PhotoGalleryFragment extends Fragment {
         @Override
         protected void onPreExecute() {
             mDialog = new ProgressDialog(getActivity());
-            // TODO strings-datei aktualisieren
             mDialog.setTitle("Photo is being loaded");
             mDialog.setMessage("Please wait...");
             mDialog.setCancelable(true);

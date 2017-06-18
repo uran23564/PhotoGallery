@@ -18,7 +18,7 @@ public class PhotoDownloader<T> extends HandlerThread {
     private static final int MESSAGE_FULL_PICTURE=0;
 
     private volatile boolean mHasQuit=false;
-    byte[] mBytes=null;
+    private byte[] mBytes=null;
     // Handler fuer die kommunikation innerhalb des threads
     private Handler mRequestHandler;
     private ConcurrentMap<T,String> mRequestMap=new ConcurrentHashMap<>(); // zu jedem photoholder gibts eine url
